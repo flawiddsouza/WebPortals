@@ -1,17 +1,75 @@
-<script setup lang="ts">
-const ipcHandle = () => window.electron.ipcRenderer.send('ping')
-</script>
-
 <template>
-  <div style="height: 100dvh; display: grid; grid-template-columns: auto 1fr;">
-    <div style="height: 100%; background-color: lightcoral; padding: 1rem;">
-      <div>Service 1</div>
-      <div>Service 2</div>
-      <div>Service 3</div>
-      <button>Add Service</button>
+  <div style="height: 100dvh; display: grid; grid-template-columns: auto 1fr">
+    <div style="height: 100%; background-color: lightcoral; padding: 1rem">
+      <div
+        v-for="service in services"
+        :key="service.id"
+        @click="activeService = service"
+        style="cursor: pointer"
+        :style="{ fontWeight: activeService?.id === service.id ? 'bold' : 'normal' }"
+      >
+        {{ service.name }}
+      </div>
+      <button @click="showAddServiceModal = true">Add Service</button>
     </div>
-    <div style="height: 100%; background-color: plum;">
-      <button @click="ipcHandle">Ping</button>
+    <div style="height: 100%; background-color: plum">
+      <webview
+        v-for="service in services"
+        v-show="service.id === activeService?.id"
+        :src="service.url"
+        style="height: 100%; width: 100%; background-color: white"
+        :partition="`persist:${service.partitionId}`"
+      ></webview>
     </div>
   </div>
+
+  <VueFinalModal
+    v-model="showAddServiceModal"
+    style="display: flex; justify-content: center; align-items: center"
+    content-style="background-color: white; padding: 1rem; width: max-content; height: max-content; color: black;"
+  >
+    <ManageServices
+      :partitions="partitions"
+      v-model:services="services"
+      v-model:showPartitionManager="showPartitionManager"
+    ></ManageServices>
+  </VueFinalModal>
+
+  <VueFinalModal
+    v-model="showPartitionManager"
+    style="display: flex; justify-content: center; align-items: center"
+    content-style="background-color: white; padding: 1rem; width: max-content; height: max-content; color: black;"
+  >
+    <ManagePartitions v-model:partitions="partitions" />
+  </VueFinalModal>
+
+  <ModalsContainer />
 </template>
+
+<script setup lang="ts">
+import { ref, onBeforeMount, watch } from 'vue'
+import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
+import 'vue-final-modal/style.css'
+import type { Partition, Service } from './db'
+import { getActiveServiceId, getPartitions, getServices, saveActiveServiceId } from './db'
+import ManagePartitions from './components/ManagePartitions.vue'
+import ManageServices from './components/ManageServices.vue'
+
+const partitions = ref<Partition[]>([])
+const services = ref<Service[]>([])
+const activeService = ref<Service | null>(null)
+const showAddServiceModal = ref(false)
+const showPartitionManager = ref(false)
+
+watch(activeService, () => {
+  saveActiveServiceId(activeService.value?.id)
+})
+
+onBeforeMount(async () => {
+  partitions.value = await getPartitions()
+  services.value = await getServices()
+  const activeServiceId = await getActiveServiceId()
+  activeService.value =
+    services.value.find((service) => service.id === activeServiceId) ?? services.value[0]
+})
+</script>

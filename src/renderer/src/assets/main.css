@@ -19,3 +19,16 @@ code {
     monospace;
   font-size: 85%;
 }
+
+table {
+  border-collapse: collapse;
+}
+
+table th,
+table td {
+  border: 1px solid black;
+}
+
+input {
+  font: inherit;
+}
