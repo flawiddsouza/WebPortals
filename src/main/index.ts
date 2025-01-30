@@ -1,7 +1,60 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Tray, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+
+const isMac = process.platform === 'darwin'
+
+let tray: Tray
+
+function toggleWindow(mainWindow: BrowserWindow) {
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  } else if (mainWindow.isVisible() && mainWindow.isFocused()) {
+    if (isMac && mainWindow.isFullScreen()) {
+      mainWindow.once('show', () => mainWindow.setFullScreen(true))
+      mainWindow.once('leave-full-screen', () => mainWindow.hide())
+      mainWindow.setFullScreen(false)
+    } else {
+      mainWindow.hide()
+    }
+  } else {
+    mainWindow.show()
+    mainWindow.focus()
+  }
+
+  tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+}
+
+function getTrayMenuTemplate(mainWindow: BrowserWindow) {
+  const isHidden = mainWindow.isMinimized() || !mainWindow.isVisible()
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: isHidden ? 'Show Web Portals' : 'Hide Web Portals',
+      click: () => {
+        toggleWindow(mainWindow)
+      }
+    },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit()
+      }
+    }
+  ])
+
+  return contextMenu
+}
+
+function createTray(mainWindow: BrowserWindow) {
+  tray = new Tray(icon)
+  tray.setToolTip('Web Portals')
+  tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  tray.on('click', () => {
+    toggleWindow(mainWindow)
+  })
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -27,6 +80,25 @@ function createWindow(): void {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
+
+  mainWindow.on('show', () => {
+    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  })
+
+  mainWindow.on('hide', () => {
+    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  })
+
+  mainWindow.on('minimize', () => {
+    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  })
+
+  mainWindow.on('close', (event) => {
+    event.preventDefault()
+    mainWindow.hide()
+  })
+
+  createTray(mainWindow)
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
@@ -61,16 +133,12 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  app.on('before-quit', function () {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.removeAllListeners('close')
+      win.close()
+    })
+    tray.destroy()
+  })
 })
-
-// In this file you can include the rest of your app"s specific main process
-// code. You can also put them in separate files and require them here.
