@@ -19,6 +19,9 @@
         :src="service.url"
         style="height: 100%; width: 100%; background-color: white"
         :partition="`persist:${service.partitionId}`"
+        preload="file://G:\FolderHolder\repos\WebPortals\src\main\preload.js"
+        class="webview"
+        v-webview
       ></webview>
     </div>
   </div>
@@ -60,6 +63,23 @@ const services = ref<Service[]>([])
 const activeService = ref<Service | null>(null)
 const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
+
+const vWebview = {
+  mounted(el: HTMLElement) {
+    el.addEventListener('dom-ready', () => {
+      // el.openDevTools()
+      // @ts-expect-error
+      el.executeJavaScript(`
+        window.prompt = window._prompt
+        ;0 // without this, we get the below error in the console:
+        // Error occurred in handler for 'GUEST_VIEW_MANAGER_CALL': Error: An object could not be cloned.
+        // at IpcRendererInternal.send (node:electron/js2c/sandbox_bundle:2:121801)
+        // at IpcRendererInternal.<anonymous> (node:electron/js2c/sandbox_bundle:2:121379)
+        // Solution from: https://github.com/electron/electron/issues/23722#issuecomment-632631774
+      `)
+    })
+  }
+}
 
 watch(activeService, () => {
   saveActiveServiceId(activeService.value?.id)

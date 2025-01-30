@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, Tray, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import prompt from 'custom-electron-prompt'
 
 const isMac = process.platform === 'darwin'
 
@@ -123,8 +124,13 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
+  ipcMain.on('prompt', async (event, label) => {
+    const result = await prompt({
+      title: 'Prompt',
+      label: label
+    })
+    event.returnValue = result
+  })
 
   createWindow()
 

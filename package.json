@@ -23,6 +23,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "custom-electron-prompt": "^1.5.8",
     "electron-updater": "^6.1.7",
     "nanoid": "^5.0.9",
     "vue-final-modal": "^4.5.5"
