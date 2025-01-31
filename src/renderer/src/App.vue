@@ -21,6 +21,7 @@
         :partition="`persist:${service.partitionId}`"
         preload="file://G:\FolderHolder\repos\WebPortals\src\main\preload.js"
         class="webview"
+        allowpopups
         v-webview
       ></webview>
     </div>

@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -57,6 +57,13 @@ function createTray(mainWindow: BrowserWindow) {
   })
 }
 
+function windowOpenHandler(details: Electron.HandlerDetails) {
+  import('open').then((open) => {
+    open.default(details.url)
+  })
+  return { action: 'deny' } as const
+}
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -77,10 +84,7 @@ function createWindow(): void {
     mainWindow.maximize()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
 
   mainWindow.on('show', () => {
     tray.setContextMenu(getTrayMenuTemplate(mainWindow))
@@ -122,6 +126,12 @@ app.whenReady().then(() => {
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() === 'webview') {
+      contents.setWindowOpenHandler(windowOpenHandler)
+    }
   })
 
   ipcMain.on('prompt', async (event, label) => {
