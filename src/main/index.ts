@@ -117,6 +117,10 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
 
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    webPreferences.preload = join(__dirname, '..', 'preload', 'webview.js')
+  })
+
   mainWindow.on('show', () => {
     tray.setContextMenu(getTrayMenuTemplate(mainWindow))
   })

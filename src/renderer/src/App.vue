@@ -19,7 +19,6 @@
         :src="service.url"
         style="height: 100%; width: 100%; background-color: white"
         :partition="`persist:${service.partitionId}`"
-        preload="file://G:\FolderHolder\repos\WebPortals\src\main\preload.js"
         class="webview"
         allowpopups
         v-webview
