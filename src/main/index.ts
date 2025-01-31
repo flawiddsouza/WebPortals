@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import prompt from 'custom-electron-prompt'
+import createMenu from './menu'
 
 const isMac = process.platform === 'darwin'
 
@@ -78,6 +79,9 @@ function createWindow(): void {
       webviewTag: true
     }
   })
+
+  const menu = createMenu()
+  mainWindow.setMenu(menu)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
