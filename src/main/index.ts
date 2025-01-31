@@ -5,7 +5,9 @@ import icon from '../../resources/icon.png?asset'
 import prompt from 'custom-electron-prompt'
 import createMenu from './menu'
 
+const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
+const isLinux = process.platform === 'linux'
 
 let tray: Tray
 
@@ -115,6 +117,19 @@ function createWindow(): void {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+// start application on startup
+if (!is.dev) {
+  if (isWindows || isMac) {
+    app.setLoginItemSettings({
+      openAtLogin: true
+    })
+  }
+
+  if (isLinux) {
+    // TODO
   }
 }
 
