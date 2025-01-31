@@ -1,13 +1,25 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import prompt from 'custom-electron-prompt'
 import createMenu from './menu'
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+import windowStateKeeper from './utils/window-state'
+import AutoLaunch from 'auto-launch'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
 const isLinux = process.platform === 'linux'
+
+const argv = yargs(hideBin(process.argv)).option('start-minimized', {
+  type: 'boolean',
+  description: 'Start the application minimized',
+  default: false
+}).argv
+
+console.log('--start-minimized:', argv['start-minimized'])
 
 let tray: Tray
 
@@ -68,10 +80,20 @@ function windowOpenHandler(details: Electron.HandlerDetails) {
 }
 
 function createWindow(): void {
+  const workAreaSize = screen.getPrimaryDisplay().workAreaSize
+  const winStateOptions = {
+    defaultWidth: parseInt((workAreaSize.width * 0.75).toString()),
+    defaultHeight: parseInt((workAreaSize.height * 0.75).toString()),
+    defaultMaximize: true
+  }
+  const winState = windowStateKeeper(winStateOptions)
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    x: winState.x,
+    y: winState.y,
+    width: winState.width,
+    height: winState.height,
     show: false,
     autoHideMenuBar: false,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -82,12 +104,15 @@ function createWindow(): void {
     }
   })
 
+  winState.manage(mainWindow)
+
   const menu = createMenu()
   mainWindow.setMenu(menu)
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-    mainWindow.maximize()
+    if (!argv['start-minimized']) {
+      mainWindow.show()
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
@@ -124,12 +149,27 @@ function createWindow(): void {
 if (!is.dev) {
   if (isWindows || isMac) {
     app.setLoginItemSettings({
-      openAtLogin: true
+      openAtLogin: true,
+      args: argv['start-minimized'] ? ['--start-minimized'] : [] // only supported by windows
     })
   }
 
   if (isLinux) {
-    // TODO
+    const autolauncher = new AutoLaunch({
+      name: 'Web Portals',
+      path: app.getPath('exe') + ' --start-minimized'
+    })
+
+    autolauncher
+      .isEnabled()
+      .then((isEnabled) => {
+        if (!isEnabled) {
+          autolauncher.enable()
+        }
+      })
+      .catch((err) => {
+        console.error('AutoLaunch error:', err)
+      })
   }
 }
 
