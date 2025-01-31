@@ -150,7 +150,7 @@ if (!is.dev) {
   if (isWindows || isMac) {
     app.setLoginItemSettings({
       openAtLogin: true,
-      args: argv['start-minimized'] ? ['--start-minimized'] : [] // only supported by windows
+      args: ['--start-minimized'] // only supported by windows
     })
   }
 
