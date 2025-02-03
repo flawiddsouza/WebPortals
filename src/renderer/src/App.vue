@@ -19,6 +19,7 @@
         :src="service.url"
         style="height: 100%; width: 100%; background-color: white"
         :partition="`persist:${service.partitionId}`"
+        :useragent="userAgent"
         class="webview"
         allowpopups
         v-webview
@@ -50,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, watch } from 'vue'
+import { ref, computed, onBeforeMount, watch } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -63,6 +64,12 @@ const services = ref<Service[]>([])
 const activeService = ref<Service | null>(null)
 const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
+
+const userAgent = computed(() => {
+  return window.navigator.userAgent
+    .replaceAll(/(WebPortals\/[0-9.]+|Electron\/[0-9.]+) /g, '')
+    .trim()
+})
 
 const vWebview = {
   mounted(el: HTMLElement) {
