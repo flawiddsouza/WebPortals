@@ -147,6 +147,15 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  app.on('second-instance', () => {
+    console.log('Second instance was opened, showing the existing window and focusing it')
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.focus()
+    mainWindow.show()
+  })
 }
 
 // start application on startup
@@ -185,6 +194,13 @@ if (!is.dev) {
 app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.flawiddsouza.WebPortals')
+
+  const isSingleInstance = app.requestSingleInstanceLock()
+
+  if (!isSingleInstance) {
+    app.quit()
+    return
+  }
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
