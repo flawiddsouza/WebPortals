@@ -7,7 +7,7 @@ import createMenu from './menu'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import windowStateKeeper from './utils/window-state'
-import AutoLaunch from 'auto-launch'
+import AutoLaunch from './utils/auto-launch'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
@@ -161,7 +161,9 @@ if (!is.dev) {
   if (isLinux) {
     const autolauncher = new AutoLaunch({
       name: 'Web Portals',
-      path: app.getPath('exe') + ' --start-minimized'
+      options: {
+        extraArgs: ['--start-minimized']
+      }
     })
 
     autolauncher
