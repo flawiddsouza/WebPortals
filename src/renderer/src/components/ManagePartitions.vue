@@ -14,7 +14,7 @@
               {{ partition.name }}
             </td>
             <td>
-              <button @click="startEdit(partition)">Edit</button>
+              <button type="button" @click="startEdit(partition)">Edit</button>
               <button type="button" @click="handleDeletePartititon(partition)">Delete</button>
             </td>
           </template>

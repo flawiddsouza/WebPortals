@@ -47,7 +47,7 @@
             <td>{{ service.name }}</td>
             <td>{{ service.url }}</td>
             <td>
-              <button @click="startEditService(service)">Edit</button>
+              <button type="button" @click="startEditService(service)">Edit</button>
               <button type="button" @click="handleDeleteService(service)">Delete</button>
             </td>
           </template>
