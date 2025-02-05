@@ -4,7 +4,7 @@
       <div
         v-for="service in services"
         :key="service.id"
-        @click="activeService = service"
+        @click="setActiveService(service)"
         style="cursor: pointer"
         :style="{ fontWeight: activeService?.id === service.id ? 'bold' : 'normal' }"
       >
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeMount, watch } from 'vue'
+import { ref, computed, onBeforeMount } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -71,6 +71,12 @@ const userAgent = computed(() => {
     .trim()
 })
 
+function setActiveService(service: Service) {
+  activeService.value = service
+  document.title = service.name + ' - WebPortals'
+  saveActiveServiceId(service.id)
+}
+
 const vWebview = {
   mounted(el: HTMLElement) {
     el.addEventListener('dom-ready', () => {
@@ -88,15 +94,12 @@ const vWebview = {
   }
 }
 
-watch(activeService, () => {
-  saveActiveServiceId(activeService.value?.id)
-})
-
 onBeforeMount(async () => {
   partitions.value = await getPartitions()
   services.value = await getServices()
   const activeServiceId = await getActiveServiceId()
-  activeService.value =
+  const serviceToSelect =
     services.value.find((service) => service.id === activeServiceId) ?? services.value[0]
+  setActiveService(serviceToSelect)
 })
 </script>
