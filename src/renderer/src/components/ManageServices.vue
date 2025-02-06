@@ -45,7 +45,7 @@
           <template v-if="editService?.id !== service.id">
             <td>{{ getPartitionName(service.partitionId) }}</td>
             <td>{{ service.name }}</td>
-            <td>{{ service.url }}</td>
+            <td style="max-width: 25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text;">{{ service.url }}</td>
             <td>
               <button type="button" @click="startEditService(service)">Edit</button>
               <button type="button" @click="handleDeleteService(service)">Delete</button>
@@ -60,7 +60,7 @@
               </select>
             </td>
             <td><input type="text" v-model="editService.name" required /></td>
-            <td><input type="url" v-model="editService.url" required /></td>
+            <td><input type="url" v-model="editService.url" required style="width: 100%;" /></td>
             <td>
               <button>Save</button>
               <button type="button" @click="editService = null">Cancel</button>
