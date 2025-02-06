@@ -22,7 +22,7 @@
         :useragent="userAgent"
         class="webview"
         allowpopups
-        v-webview
+        v-webview="service.id"
       ></webview>
     </div>
   </div>
@@ -77,13 +77,62 @@ function setActiveService(service: Service) {
   saveActiveServiceId(service.id)
 }
 
+const notificationsClassDefinition = `(() => {
+const originalNotification = window.Notification;
+
+class Notification {
+  static permission = 'granted';
+
+  constructor(title, options) {
+    const notification = new originalNotification(title, options);
+
+    notification.onclick = () => {
+      window.WebPortals.notificationClick(window._serviceId);
+      this.onclick();
+    };
+
+    notification.onclose = () => {
+      this.onclose();
+    };
+
+    notification.onerror = () => {
+      this.onerror();
+    };
+
+    notification.onshow = () => {
+      this.onshow();
+    };
+  }
+
+  static requestPermission(cb) {
+    if (typeof cb === 'function') {
+      cb(Notification.permission);
+    }
+
+    return Promise.resolve(Notification.permission);
+  }
+
+  onclick() {}
+
+  onclose() {}
+
+  onerror() {}
+
+  onshow() {}
+}
+
+window.Notification = Notification;
+})();`
+
 const vWebview = {
-  mounted(el: HTMLElement) {
+  mounted(el: HTMLElement, binding: any) {
     el.addEventListener('dom-ready', () => {
       // el.openDevTools()
       // @ts-expect-error
       el.executeJavaScript(`
-        window.prompt = window._prompt
+        window._serviceId = '${binding.value}';
+        window.prompt = window.WebPortals.prompt;
+        ${notificationsClassDefinition}
         ;0 // without this, we get the below error in the console:
         // Error occurred in handler for 'GUEST_VIEW_MANAGER_CALL': Error: An object could not be cloned.
         // at IpcRendererInternal.send (node:electron/js2c/sandbox_bundle:2:121801)
@@ -101,5 +150,12 @@ onBeforeMount(async () => {
   const serviceToSelect =
     services.value.find((service) => service.id === activeServiceId) ?? services.value[0]
   setActiveService(serviceToSelect)
+
+  window.electron.ipcRenderer.on('makeServiceActive', (_event, serviceId) => {
+    const service = services.value.find((service) => service.id === serviceId)
+    if (service) {
+      setActiveService(service)
+    }
+  })
 })
 </script>

@@ -1,13 +1,13 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, screen } from 'electron'
+import { app, BrowserWindow, Tray, Menu, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import prompt from 'custom-electron-prompt'
 import createMenu from './menu'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import windowStateKeeper from './utils/window-state'
 import AutoLaunch from './utils/auto-launch'
+import { initIpc } from './ipc'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
@@ -140,6 +140,8 @@ function createWindow(): void {
 
   createTray(mainWindow)
 
+  initIpc(mainWindow)
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -213,14 +215,6 @@ app.whenReady().then(() => {
     if (contents.getType() === 'webview') {
       contents.setWindowOpenHandler(windowOpenHandler)
     }
-  })
-
-  ipcMain.on('prompt', async (event, label) => {
-    const result = await prompt({
-      title: 'Prompt',
-      label: label
-    })
-    event.returnValue = result
   })
 
   createWindow()
