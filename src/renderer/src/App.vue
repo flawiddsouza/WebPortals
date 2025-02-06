@@ -5,25 +5,35 @@
         v-for="service in services"
         :key="service.id"
         @click="setActiveService(service)"
-        style="cursor: pointer"
-        :style="{ fontWeight: activeService?.id === service.id ? 'bold' : 'normal' }"
+        :style="{
+          fontWeight: activeService?.id === service.id ? 'bold' : 'normal',
+          color: service.enabled ? 'white' : '#ffffff69',
+          cursor: service.enabled ? 'pointer' : 'cursor'
+        }"
       >
         {{ service.name }}
       </div>
-      <button @click="showAddServiceModal = true">Add Service</button>
+      <button
+        @click="showAddServiceModal = true"
+        :style="{ marginTop: services.length > 0 ? '0.5rem' : '0' }"
+      >
+        Add Service
+      </button>
     </div>
     <div style="height: 100%; background-color: plum">
-      <webview
-        v-for="service in services"
-        v-show="service.id === activeService?.id"
-        :src="service.url"
-        style="height: 100%; width: 100%; background-color: white"
-        :partition="`persist:${service.partitionId}`"
-        :useragent="userAgent"
-        class="webview"
-        allowpopups
-        v-webview="service.id"
-      ></webview>
+      <template v-for="service in services" :key="service.id">
+        <webview
+          v-if="service.enabled"
+          v-show="service.id === activeService?.id"
+          :src="service.url"
+          style="height: 100%; width: 100%; background-color: white"
+          :partition="`persist:${service.partitionId}`"
+          :useragent="userAgent"
+          class="webview"
+          allowpopups
+          v-webview="service.id"
+        ></webview>
+      </template>
     </div>
   </div>
 
@@ -72,6 +82,10 @@ const userAgent = computed(() => {
 })
 
 function setActiveService(service: Service) {
+  if (!service.enabled) {
+    return
+  }
+
   activeService.value = service
   document.title = service.name + ' - WebPortals'
   saveActiveServiceId(service.id)

@@ -10,6 +10,7 @@ export interface Service {
   partitionId: string
   name: string
   url: string
+  enabled: boolean
 }
 
 export async function getPartitions(): Promise<Partition[]> {
@@ -55,9 +56,14 @@ export async function getServices(): Promise<Service[]> {
   return []
 }
 
-export async function createService(partitionId: string, name: string, url: string): Promise<void> {
+export async function createService(
+  partitionId: string,
+  name: string,
+  url: string,
+  enabled: boolean
+): Promise<void> {
   const services = await getServices()
-  const newService = { id: nanoid(), partitionId, name, url }
+  const newService = { id: nanoid(), partitionId, name, url, enabled }
   services.push(newService)
   localStorage.setItem(`services`, JSON.stringify(services))
 }
@@ -66,7 +72,8 @@ export async function updateService(
   id: string,
   partitionId: string,
   name: string,
-  url: string
+  url: string,
+  enabled: boolean
 ): Promise<void> {
   const services = await getServices()
   const service = services.find((service) => service.id === id)
@@ -75,6 +82,7 @@ export async function updateService(
     service.partitionId = partitionId
     service.name = name
     service.url = url
+    service.enabled = enabled
     localStorage.setItem(`services`, JSON.stringify(services))
   }
 }
