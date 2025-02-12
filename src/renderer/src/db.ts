@@ -11,6 +11,7 @@ export interface Service {
   name: string
   url: string
   enabled: boolean
+  sortOrder?: number
 }
 
 export async function getPartitions(): Promise<Partition[]> {
@@ -50,7 +51,15 @@ export async function getServices(): Promise<Service[]> {
   const savedData = localStorage.getItem(`services`)
 
   if (savedData) {
-    return JSON.parse(savedData)
+    const services = JSON.parse(savedData)
+
+    return services.sort((a: Service, b: Service) => {
+      if (a.sortOrder && b.sortOrder) {
+        return a.sortOrder - b.sortOrder
+      }
+
+      return 0
+    })
   }
 
   return []
@@ -85,6 +94,21 @@ export async function updateService(
     service.enabled = enabled
     localStorage.setItem(`services`, JSON.stringify(services))
   }
+}
+
+export async function updateServicesSortOrder(
+  services: { serviceId: string; sortOrder: number }[]
+) {
+  const servicesData = await getServices()
+  const newServices = servicesData.map((service) => {
+    const serviceOrder = services.find((s) => s.serviceId === service.id)
+    if (serviceOrder) {
+      service.sortOrder = serviceOrder.sortOrder
+    }
+    return service
+  })
+
+  localStorage.setItem(`services`, JSON.stringify(newServices))
 }
 
 export async function deleteService(id: string): Promise<void> {

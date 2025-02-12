@@ -47,11 +47,12 @@
           <th>Name</th>
           <th>URL</th>
           <th>Enabled</th>
+          <th>Order</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="service in services" :key="service.id">
+        <tr v-for="(service, serviceIndex) in services" :key="service.id">
           <template v-if="editService?.id !== service.id">
             <td>{{ getPartitionName(service.partitionId) }}</td>
             <td>{{ service.name }}</td>
@@ -71,6 +72,10 @@
               <template v-else>No</template>
             </td>
             <td>
+              <button @click="moveUp(serviceIndex)">↑</button>
+              <button @click="moveDown(serviceIndex)">↓</button>
+            </td>
+            <td>
               <button type="button" @click="startEditService(service)">Edit</button>
               <button type="button" @click="handleDeleteService(service)">Delete</button>
             </td>
@@ -85,12 +90,13 @@
             </td>
             <td><input type="text" v-model="editService.name" required /></td>
             <td><input type="url" v-model="editService.url" required style="width: 100%" /></td>
-            <td>
+            <td style="text-align: center">
               <select v-model="editService.enabled" required>
                 <option :value="true">Yes</option>
                 <option :value="false">No</option>
               </select>
             </td>
+            <td></td>
             <td>
               <button>Save</button>
               <button type="button" @click="editService = null">Cancel</button>
@@ -104,7 +110,13 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { createService, deleteService, getServices, updateService } from '@renderer/db'
+import {
+  createService,
+  deleteService,
+  getServices,
+  updateService,
+  updateServicesSortOrder
+} from '@renderer/db'
 import { vFocus } from '@renderer/utils'
 import type { Partition, Service } from '@renderer/db'
 
@@ -194,5 +206,45 @@ async function handleDeleteService(service: Service) {
 
 function getPartitionName(partitionId: string) {
   return props.partitions.find((partition) => partition.id === partitionId)?.name
+}
+
+async function moveUp(index: number) {
+  if (index === 0) return
+
+  const services = [...props.services]
+  const service = services[index]
+  services[index] = services[index - 1]
+  services[index - 1] = service
+
+  await updateServicesSortOrder(
+    services.map((service, serviceIndex) => {
+      return {
+        serviceId: service.id,
+        sortOrder: serviceIndex + 1
+      }
+    })
+  )
+
+  emit('update:services', await getServices())
+}
+
+async function moveDown(index: number) {
+  if (index === props.services.length - 1) return
+
+  const services = [...props.services]
+  const service = services[index]
+  services[index] = services[index + 1]
+  services[index + 1] = service
+
+  await updateServicesSortOrder(
+    services.map((service, serviceIndex) => {
+      return {
+        serviceId: service.id,
+        sortOrder: serviceIndex + 1
+      }
+    })
+  )
+
+  emit('update:services', await getServices())
 }
 </script>
