@@ -66,11 +66,9 @@
             >
               {{ service.url }}
             </td>
-            <td>
-              <select v-model="service.enabled" @change="updateServiceEnabled(service)">
-                <option :value="true">Yes</option>
-                <option :value="false">No</option>
-              </select>
+            <td @click="updateServiceEnabled(service)" style="text-align: center">
+              <template v-if="service.enabled">Yes</template>
+              <template v-else>No</template>
             </td>
             <td>
               <button type="button" @click="startEditService(service)">Edit</button>
@@ -180,6 +178,7 @@ async function handleUpdateService() {
 }
 
 async function updateServiceEnabled(service: Service) {
+  service.enabled = !service.enabled
   await updateService(service.id, service.partitionId, service.name, service.url, service.enabled)
   emit('update:services', await getServices())
 }
