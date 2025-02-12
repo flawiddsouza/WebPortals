@@ -5,6 +5,7 @@
         v-for="service in services"
         :key="service.id"
         @click="setActiveService(service)"
+        @contextmenu.prevent="handleContextMenu($event, service)"
         :style="{
           fontWeight: activeService?.id === service.id ? 'bold' : 'normal',
           color: service.enabled ? 'white' : '#ffffff69',
@@ -32,6 +33,7 @@
           class="webview"
           allowpopups
           v-webview="service.id"
+          :data-service-id="service.id"
         ></webview>
       </template>
     </div>
@@ -65,9 +67,16 @@ import { ref, computed, onBeforeMount } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
-import { getActiveServiceId, getPartitions, getServices, saveActiveServiceId } from './db'
+import {
+  getActiveServiceId,
+  getPartitions,
+  getServices,
+  saveActiveServiceId,
+  updateService
+} from './db'
 import ManagePartitions from './components/ManagePartitions.vue'
 import ManageServices from './components/ManageServices.vue'
+import ContextMenu from '@imengyu/vue3-context-menu'
 
 const partitions = ref<Partition[]>([])
 const services = ref<Service[]>([])
@@ -91,6 +100,59 @@ function setActiveService(service: Service) {
   saveActiveServiceId(service.id)
 }
 
+interface WebView {
+  reload: () => void
+  getWebContentsId: () => number
+}
+
+async function updateServiceEnabled(service: Service) {
+  await updateService(service.id, service.partitionId, service.name, service.url, service.enabled)
+  services.value = await getServices()
+}
+
+function handleContextMenu(event: MouseEvent, service: Service) {
+  event.preventDefault()
+
+  ContextMenu.showContextMenu({
+    x: event.x,
+    y: event.y,
+    preserveIconWidth: false,
+    items: [
+      {
+        label: 'Reload',
+        onClick: () => {
+          const webview = document.querySelector(
+            `.webview[data-service-id="${service.id}"]`
+          ) as WebView | null
+          if (webview) {
+            webview.reload()
+          }
+        },
+        disabled: !service.enabled
+      },
+      {
+        label: 'Inspect',
+        onClick: () => {
+          const webview = document.querySelector(
+            `.webview[data-service-id="${service.id}"]`
+          ) as WebView | null
+          if (webview) {
+            window.electron.ipcRenderer.invoke('openDevTools', webview.getWebContentsId())
+          }
+        },
+        disabled: !service.enabled
+      },
+      {
+        label: service.enabled ? 'Disable' : 'Enable',
+        onClick: () => {
+          service.enabled = !service.enabled
+          updateServiceEnabled(service)
+        }
+      }
+    ]
+  })
+}
+
 const notificationsClassDefinition = `(() => {
 const originalNotification = window.Notification;
 
@@ -99,6 +161,8 @@ class Notification {
 
   constructor(title, options) {
     const notification = new originalNotification(title, options);
+
+    console.log('Notification created:', title, options);
 
     notification.onclick = () => {
       window.WebPortals.notificationClick(window._serviceId);

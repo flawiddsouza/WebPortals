@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, webContents } from 'electron'
 import prompt from 'custom-electron-prompt'
 
 export function initIpc(mainWindow: BrowserWindow) {
@@ -21,5 +21,32 @@ export function initIpc(mainWindow: BrowserWindow) {
       mainWindow.show()
       mainWindow.focus()
     }
+  })
+
+  ipcMain.handle('openDevTools', async (_event, webContentsId) => {
+    const webview = webContents.fromId(webContentsId)
+    if (!webview) {
+      throw new Error(`Invalid webContentsId: ${webContentsId}`)
+    }
+
+    // event.sender === mainWindow.webContents
+
+    // event.sender.openDevTools({
+    //   mode: 'right'
+    // })
+
+    // while (!event.sender.devToolsWebContents) {
+    //   await new Promise(resolve => setTimeout(resolve, 100));
+    // }
+
+    // webview.setDevToolsWebContents(event.sender.devToolsWebContents)
+
+    webview.openDevTools()
+
+    while (!webview.devToolsWebContents) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    webview.devToolsWebContents.focus()
   })
 }
