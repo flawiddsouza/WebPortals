@@ -21,7 +21,7 @@
         Add Service
       </button>
     </div>
-    <div style="height: 100%; background-color: plum">
+    <div style="height: 100%; background-color: plum; position: relative">
       <template v-for="service in services" :key="service.id">
         <webview
           v-if="service.enabled"
@@ -36,6 +36,8 @@
           :data-service-id="service.id"
         ></webview>
       </template>
+
+      <FindInPage v-model:visible="findInPageVisible" :webview-id="activeService?.id || null" />
     </div>
   </div>
 
@@ -75,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeMount } from 'vue'
+import { ref, computed, onBeforeMount, onMounted, onBeforeUnmount } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -89,6 +91,7 @@ import {
 import ManagePartitions from './components/ManagePartitions.vue'
 import ManageServices from './components/ManageServices.vue'
 import ScreenPicker from './components/ScreenPicker.vue'
+import FindInPage from './components/FindInPage.vue'
 import ContextMenu from '@imengyu/vue3-context-menu'
 
 const partitions = ref<Partition[]>([])
@@ -98,6 +101,7 @@ const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
 const showScreenPicker = ref(false)
 const activeScreenShareServiceId = ref('')
+const findInPageVisible = ref(false)
 
 const userAgent = computed(() => {
   return window.navigator.userAgent
@@ -158,6 +162,14 @@ function handleContextMenu(event: MouseEvent, service: Service) {
         disabled: !service.enabled
       },
       {
+        label: 'Find in Page',
+        onClick: () => {
+          setActiveService(service)
+          findInPageVisible.value = true
+        },
+        disabled: !service.enabled
+      },
+      {
         label: service.enabled ? 'Disable' : 'Enable',
         onClick: () => {
           service.enabled = !service.enabled
@@ -167,6 +179,42 @@ function handleContextMenu(event: MouseEvent, service: Service) {
     ]
   })
 }
+
+function handleKeyDown(event: KeyboardEvent) {
+  // Ctrl+F to find in page
+  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+    event.preventDefault()
+    findInPageVisible.value = true
+  }
+}
+
+function handleWebviewKeyboardShortcut(shortcutData: any) {
+  console.log('Received keyboard shortcut from webview:', shortcutData)
+  if ((shortcutData.ctrlKey || shortcutData.metaKey) && shortcutData.key === 'f') {
+    findInPageVisible.value = true
+    // Make sure the correct webview is active for the find operation
+    if (shortcutData.serviceId) {
+      const service = services.value.find((s) => s.id === shortcutData.serviceId)
+      if (service) {
+        setActiveService(service)
+      }
+    }
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+
+  // Listen for keyboard shortcuts from webviews
+  window.electron.ipcRenderer.on('process-keyboard-shortcut', (_event, shortcutData) => {
+    handleWebviewKeyboardShortcut(shortcutData)
+  })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+  window.electron.ipcRenderer.removeAllListeners('process-keyboard-shortcut')
+})
 
 const notificationsClassDefinition = `(() => {
 const originalNotification = window.Notification;

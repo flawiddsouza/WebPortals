@@ -115,4 +115,8 @@ export function initIpc(mainWindow: BrowserWindow) {
       }
     })
   })
+
+  ipcMain.on('webview-keyboard-shortcut', (_event, shortcutData) => {
+    mainWindow.webContents.send('process-keyboard-shortcut', shortcutData)
+  })
 }
