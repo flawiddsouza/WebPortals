@@ -59,6 +59,18 @@
     <ManagePartitions v-model:partitions="partitions" />
   </VueFinalModal>
 
+  <VueFinalModal
+    v-model="showScreenPicker"
+    style="display: flex; justify-content: center; align-items: center"
+    content-style="width: max-content; height: max-content;"
+  >
+    <ScreenPicker
+      :serviceId="activeScreenShareServiceId"
+      @cancel="cancelScreenSharing"
+      @selected="handleScreenSelected"
+    />
+  </VueFinalModal>
+
   <ModalsContainer />
 </template>
 
@@ -76,6 +88,7 @@ import {
 } from './db'
 import ManagePartitions from './components/ManagePartitions.vue'
 import ManageServices from './components/ManageServices.vue'
+import ScreenPicker from './components/ScreenPicker.vue'
 import ContextMenu from '@imengyu/vue3-context-menu'
 
 const partitions = ref<Partition[]>([])
@@ -83,6 +96,8 @@ const services = ref<Service[]>([])
 const activeService = ref<Service | null>(null)
 const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
+const showScreenPicker = ref(false)
+const activeScreenShareServiceId = ref('')
 
 const userAgent = computed(() => {
   return window.navigator.userAgent
@@ -202,6 +217,43 @@ class Notification {
 window.Notification = Notification;
 })();`
 
+const displayMediaPatchCode = `
+  (function() {
+    // Make sure we have the mediaDevices API
+    if (!navigator.mediaDevices) {
+      navigator.mediaDevices = {};
+    }
+
+    // Store original getDisplayMedia if it exists
+    const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+
+    // Define our custom getDisplayMedia implementation
+    navigator.mediaDevices.getDisplayMedia = async function(constraints) {
+      try {
+        // Get source ID through our custom WebPortals API
+        console.log('WebPortals: Requesting screen capture through custom picker');
+        const customConstraints = await window.WebPortals.getDisplayMedia(window._serviceId);
+
+        // If user canceled selection
+        if (!customConstraints) {
+          const error = new Error('Permission denied by user');
+          error.name = 'NotAllowedError';
+          throw error;
+        }
+
+        // Now use the original getUserMedia with our desktop capture constraints
+        // This is more reliable than trying to use the original getDisplayMedia
+        return await navigator.mediaDevices.getUserMedia(customConstraints);
+      } catch (error) {
+        console.error('WebPortals getDisplayMedia error:', error);
+        throw error;
+      }
+    };
+
+    console.log('WebPortals: Screen capture API patched successfully');
+  })();
+`
+
 const vWebview = {
   mounted(el: HTMLElement, binding: any) {
     el.addEventListener('dom-ready', () => {
@@ -211,6 +263,7 @@ const vWebview = {
         window._serviceId = '${binding.value}';
         window.prompt = window.WebPortals.prompt;
         ${notificationsClassDefinition}
+        ${displayMediaPatchCode}
         ;0 // without this, we get the below error in the console:
         // Error occurred in handler for 'GUEST_VIEW_MANAGER_CALL': Error: An object could not be cloned.
         // at IpcRendererInternal.send (node:electron/js2c/sandbox_bundle:2:121801)
@@ -235,5 +288,26 @@ onBeforeMount(async () => {
       setActiveService(service)
     }
   })
+
+  window.electron.ipcRenderer.on('request-screen-sharing', (_event, serviceId) => {
+    console.log('Received request-screen-sharing for service:', serviceId)
+    activeScreenShareServiceId.value = serviceId
+    showScreenPicker.value = true
+  })
 })
+
+function cancelScreenSharing() {
+  console.log('User canceled screen sharing')
+  showScreenPicker.value = false
+  window.electron.ipcRenderer.invoke('screen-picker-response', null)
+}
+
+function handleScreenSelected(constraints: any) {
+  console.log(
+    'User selected screen sharing source:',
+    constraints ? 'constraints available' : 'no constraints'
+  )
+  showScreenPicker.value = false
+  window.electron.ipcRenderer.invoke('screen-picker-response', constraints)
+}
 </script>
