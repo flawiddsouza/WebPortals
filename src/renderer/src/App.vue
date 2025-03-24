@@ -260,6 +260,8 @@ class Notification {
   onerror() {}
 
   onshow() {}
+
+  close() {}
 }
 
 window.Notification = Notification;
