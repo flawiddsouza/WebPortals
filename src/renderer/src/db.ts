@@ -134,3 +134,17 @@ export async function saveActiveServiceId(serviceId: string | undefined): Promis
     localStorage.removeItem('activeServiceId')
   }
 }
+
+export async function getSidebarVisible(): Promise<boolean> {
+  const savedData = localStorage.getItem('sidebarVisible')
+
+  if (savedData !== null) {
+    return savedData === 'true'
+  }
+
+  return true
+}
+
+export async function saveSidebarVisible(visible: boolean): Promise<void> {
+  localStorage.setItem('sidebarVisible', visible.toString())
+}

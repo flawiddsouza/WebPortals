@@ -106,7 +106,7 @@ function createWindow(): void {
 
   winState.manage(mainWindow)
 
-  const menu = createMenu()
+  const menu = createMenu(mainWindow)
   mainWindow.setMenu(menu)
 
   mainWindow.on('ready-to-show', () => {

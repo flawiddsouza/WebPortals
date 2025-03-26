@@ -1,6 +1,6 @@
-import { Menu, type MenuItemConstructorOptions } from 'electron'
+import { Menu, type MenuItemConstructorOptions, BrowserWindow } from 'electron'
 
-export default function createMenu() {
+export default function createMenu(mainWindow: BrowserWindow) {
   const menuTemplate: MenuItemConstructorOptions[] = [
     { role: 'fileMenu' },
     { role: 'editMenu' },
@@ -15,6 +15,14 @@ export default function createMenu() {
         { role: 'zoomIn' },
         { role: 'zoomIn', accelerator: 'CommandOrControl+=', visible: false },
         { role: 'zoomOut' },
+        { type: 'separator' },
+        {
+          label: 'Toggle Sidebar',
+          accelerator: 'CommandOrControl+B',
+          click: () => {
+            mainWindow.webContents.send('toggle-sidebar')
+          }
+        },
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]

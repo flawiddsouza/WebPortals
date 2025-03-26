@@ -1,6 +1,9 @@
 <template>
-  <div style="height: 100dvh; display: grid; grid-template-columns: auto 1fr">
-    <div style="height: 100%; background-color: lightcoral; padding: 1rem">
+  <div
+    style="height: 100dvh; display: grid"
+    :style="{ gridTemplateColumns: sidebarVisible ? 'auto 1fr' : '1fr' }"
+  >
+    <div v-if="sidebarVisible" style="height: 100%; background-color: lightcoral; padding: 1rem">
       <div
         v-for="service in services"
         :key="service.id"
@@ -86,7 +89,9 @@ import {
   getPartitions,
   getServices,
   saveActiveServiceId,
-  updateService
+  updateService,
+  getSidebarVisible,
+  saveSidebarVisible
 } from './db'
 import ManagePartitions from './components/ManagePartitions.vue'
 import ManageServices from './components/ManageServices.vue'
@@ -102,6 +107,7 @@ const showPartitionManager = ref(false)
 const showScreenPicker = ref(false)
 const activeScreenShareServiceId = ref('')
 const findInPageVisible = ref(false)
+const sidebarVisible = ref(true)
 
 const userAgent = computed(() => {
   return window.navigator.userAgent
@@ -331,6 +337,7 @@ onBeforeMount(async () => {
   const serviceToSelect =
     services.value.find((service) => service.id === activeServiceId) ?? services.value[0]
   setActiveService(serviceToSelect)
+  sidebarVisible.value = await getSidebarVisible()
 
   window.electron.ipcRenderer.on('makeServiceActive', (_event, serviceId) => {
     const service = services.value.find((service) => service.id === serviceId)
@@ -343,6 +350,11 @@ onBeforeMount(async () => {
     console.log('Received request-screen-sharing for service:', serviceId)
     activeScreenShareServiceId.value = serviceId
     showScreenPicker.value = true
+  })
+
+  window.electron.ipcRenderer.on('toggle-sidebar', async () => {
+    sidebarVisible.value = !sidebarVisible.value
+    await saveSidebarVisible(sidebarVisible.value)
   })
 })
 
