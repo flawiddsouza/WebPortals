@@ -1,6 +1,6 @@
 {
   "name": "WebPortals",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A basic alternative to Ferdium",
   "main": "./out/main/index.js",
   "author": "Artelin",
