@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, screen } from 'electron'
+import { app, BrowserWindow, Tray, Menu, screen, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -64,7 +64,19 @@ function getTrayMenuTemplate(mainWindow: BrowserWindow) {
 }
 
 function createTray(mainWindow: BrowserWindow) {
-  tray = new Tray(icon)
+  let trayIcon: any = icon
+
+  if (isMac) {
+    // On macOS, create a template image (monochrome)
+    const nativeImg = nativeImage.createFromPath(icon)
+    // Resize to appropriate size for menu bar
+    const resizedImage = nativeImg.resize({ width: 16, height: 16 })
+    // Make it a template image so macOS can properly display it
+    resizedImage.setTemplateImage(true)
+    trayIcon = resizedImage
+  }
+
+  tray = new Tray(trayIcon)
   tray.setToolTip('Web Portals')
   tray.setContextMenu(getTrayMenuTemplate(mainWindow))
   tray.on('click', () => {
