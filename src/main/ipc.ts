@@ -2,10 +2,11 @@ import { BrowserWindow, ipcMain, webContents, desktopCapturer, screen } from 'el
 import prompt from 'custom-electron-prompt'
 
 export function initIpc(mainWindow: BrowserWindow) {
-  ipcMain.on('prompt', async (event, label) => {
+  ipcMain.on('prompt', async (event, label, defaultValue) => {
     const result = await prompt({
       title: 'Prompt',
-      label: label
+      label,
+      value: defaultValue,
     })
     event.returnValue = result
   })
