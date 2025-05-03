@@ -39,7 +39,10 @@ function toggleWindow(mainWindow: BrowserWindow) {
     mainWindow.focus()
   }
 
-  tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  // Only set context menu for non-Mac platforms
+  if (!isMac) {
+    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  }
 }
 
 function getTrayMenuTemplate(mainWindow: BrowserWindow) {
@@ -78,10 +81,22 @@ function createTray(mainWindow: BrowserWindow) {
 
   tray = new Tray(trayIcon)
   tray.setToolTip('Web Portals')
-  tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+
+  // Only set context menu for non-Mac platforms
+  if (!isMac) {
+    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+  }
+
   tray.on('click', () => {
     toggleWindow(mainWindow)
   })
+
+  // For macOS, handle right-click separately to show context menu
+  if (isMac) {
+    tray.on('right-click', () => {
+      tray.popUpContextMenu(getTrayMenuTemplate(mainWindow))
+    })
+  }
 }
 
 function windowOpenHandler(details: Electron.HandlerDetails) {
@@ -134,21 +149,27 @@ function createWindow(): void {
   })
 
   mainWindow.on('show', () => {
-    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    if (!isMac) {
+      tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    }
     if (isMac) {
       app.dock.show()
     }
   })
 
   mainWindow.on('hide', () => {
-    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    if (!isMac) {
+      tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    }
     if (isMac) {
       app.dock.hide()
     }
   })
 
   mainWindow.on('minimize', () => {
-    tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    if (!isMac) {
+      tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    }
   })
 
   mainWindow.on('close', (event) => {
