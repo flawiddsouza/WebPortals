@@ -135,10 +135,16 @@ function createWindow(): void {
 
   mainWindow.on('show', () => {
     tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    if (isMac) {
+      app.dock.show()
+    }
   })
 
   mainWindow.on('hide', () => {
     tray.setContextMenu(getTrayMenuTemplate(mainWindow))
+    if (isMac) {
+      app.dock.hide()
+    }
   })
 
   mainWindow.on('minimize', () => {
