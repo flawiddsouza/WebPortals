@@ -25,6 +25,7 @@
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
     "@imengyu/vue3-context-menu": "^1.4.4",
+    "applescript": "^1.0.0",
     "custom-electron-prompt": "^1.5.8",
     "electron-updater": "^6.1.7",
     "jsonfile": "^6.1.0",

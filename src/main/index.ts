@@ -21,6 +21,10 @@ const argv = yargs(hideBin(process.argv)).option('start-minimized', {
 
 console.log('--start-minimized:', argv['start-minimized'])
 
+if (isMac && argv['start-minimized']) {
+  app.dock.hide()
+}
+
 let tray: Tray
 
 function toggleWindow(mainWindow: BrowserWindow) {
@@ -201,18 +205,21 @@ function createWindow(): void {
 
 // start application on startup
 if (!is.dev) {
-  if (isWindows || isMac) {
+  if (isWindows) {
     app.setLoginItemSettings({
       openAtLogin: true,
       args: ['--start-minimized'] // only supported by windows
     })
   }
 
-  if (isLinux) {
+  if (isLinux || isMac) {
     const autolauncher = new AutoLaunch({
       name: 'Web Portals',
       options: {
-        extraArgs: ['--start-minimized']
+        extraArgs: ['--start-minimized'],
+        mac: {
+          useLaunchAgent: true
+        }
       }
     })
 
