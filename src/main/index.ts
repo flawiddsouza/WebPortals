@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import createMenu from './menu'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
+import contextMenu from 'electron-context-menu'
 import windowStateKeeper from './utils/window-state'
 import AutoLaunch from './utils/auto-launch'
 import { initIpc } from './ipc'
@@ -260,6 +261,11 @@ app.whenReady().then(() => {
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() === 'webview') {
       contents.setWindowOpenHandler(windowOpenHandler)
+      // add a right-click context menu to the app, includes options to copy, paste, select all, copy image etc.
+      contextMenu({
+        window: contents,
+        showInspectElement: false,
+      })
     }
   })
 

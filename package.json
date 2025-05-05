@@ -27,6 +27,7 @@
     "@imengyu/vue3-context-menu": "^1.4.4",
     "applescript": "^1.0.0",
     "custom-electron-prompt": "^1.5.8",
+    "electron-context-menu": "^4.0.5",
     "electron-updater": "^6.1.7",
     "jsonfile": "^6.1.0",
     "mkdirp": "^3.0.1",
