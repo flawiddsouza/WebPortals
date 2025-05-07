@@ -1,4 +1,4 @@
-import { Menu, type MenuItemConstructorOptions, BrowserWindow } from 'electron'
+import { Menu, type MenuItemConstructorOptions, BrowserWindow, app, dialog } from 'electron'
 
 export default function createMenu(mainWindow: BrowserWindow) {
   const menuTemplate: MenuItemConstructorOptions[] = [
@@ -34,7 +34,19 @@ export default function createMenu(mainWindow: BrowserWindow) {
         {
           label: 'About',
           click: () => {
-            console.log('About clicked')
+            dialog.showMessageBox(mainWindow, {
+              message: 'WebPortals',
+              detail: `Version: ${app.getVersion()}\nElectron Version: ${process.versions.electron}\nChromium Version: ${process.versions.chrome}`,
+              buttons: ['OK', 'Open GitHub Release'],
+              cancelId: 0
+            }).then(({ response }) => {
+              if (response === 1) {
+                const releaseUrl = `https://github.com/flawiddsouza/WebPortals/releases/tag/v${app.getVersion()}`;
+                import('open').then((open) => {
+                  open.default(releaseUrl)
+                })
+              }
+            });
           }
         }
       ]
