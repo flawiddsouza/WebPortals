@@ -1,24 +1,24 @@
 <template>
-  <div class="find-container" v-if="visible">
+  <div v-if="visible" class="find-container">
     <div class="find-input-container">
       <input
         ref="findInput"
-        type="text"
         v-model="currentSearchText"
+        type="text"
         placeholder="Find in page"
+        autofocus
         @keydown="handleKeyDown"
         @input="startFind"
-        autofocus
       />
-      <span class="result-count" v-if="activeMatchOrdinal !== null">
+      <span v-if="activeMatchOrdinal !== null" class="result-count">
         {{ activeMatchOrdinal }}/{{ numberOfMatches }}
       </span>
     </div>
     <div class="find-actions">
-      <button @click="findPrevious" :disabled="numberOfMatches === 0">
+      <button :disabled="numberOfMatches === 0" @click="findPrevious">
         <span>↑</span>
       </button>
-      <button @click="findNext" :disabled="numberOfMatches === 0">
+      <button :disabled="numberOfMatches === 0" @click="findNext">
         <span>↓</span>
       </button>
       <button @click="closeFindBar">

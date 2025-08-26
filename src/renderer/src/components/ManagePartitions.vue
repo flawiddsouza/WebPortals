@@ -20,7 +20,7 @@
           </template>
           <template v-else>
             <td>
-              <input type="text" v-model="editPartition.name" required v-focus />
+              <input v-model="editPartition.name" v-focus type="text" required />
             </td>
             <td>
               <button>Save</button>
@@ -30,7 +30,7 @@
         </tr>
         <tr v-if="addPartition">
           <td>
-            <input type="text" v-model="addPartition.name" required v-focus />
+            <input v-model="addPartition.name" v-focus type="text" required />
           </td>
           <td>
             <button>Save</button>

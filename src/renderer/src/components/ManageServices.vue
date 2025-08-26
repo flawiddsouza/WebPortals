@@ -3,7 +3,7 @@
     <div>
       <label>
         <div>Partition</div>
-        <select v-model="addService.partitionId" required v-focus>
+        <select v-model="addService.partitionId" v-focus required>
           <option v-for="partition in partitions" :key="partition.id" :value="partition.id">
             {{ partition.name }}
           </option>
@@ -16,13 +16,13 @@
     <div>
       <label>
         <div>Name</div>
-        <input type="text" v-model="addService.name" required />
+        <input v-model="addService.name" type="text" required />
       </label>
     </div>
     <div>
       <label>
         <div>URL</div>
-        <input type="url" v-model="addService.url" required />
+        <input v-model="addService.url" type="url" required />
       </label>
     </div>
     <div>
@@ -67,7 +67,7 @@
             >
               {{ service.url }}
             </td>
-            <td @click="updateServiceEnabled(service)" style="text-align: center">
+            <td style="text-align: center" @click="updateServiceEnabled(service)">
               <template v-if="service.enabled">Yes</template>
               <template v-else>No</template>
             </td>
@@ -82,14 +82,14 @@
           </template>
           <template v-else>
             <td>
-              <select v-model="editService.partitionId" required v-focus>
+              <select v-model="editService.partitionId" v-focus required>
                 <option v-for="partition in partitions" :key="partition.id" :value="partition.id">
                   {{ partition.name }}
                 </option>
               </select>
             </td>
-            <td><input type="text" v-model="editService.name" required /></td>
-            <td><input type="url" v-model="editService.url" required style="width: 100%" /></td>
+            <td><input v-model="editService.name" type="text" required /></td>
+            <td><input v-model="editService.url" type="url" required style="width: 100%" /></td>
             <td style="text-align: center">
               <select v-model="editService.enabled" required>
                 <option :value="true">Yes</option>

@@ -264,7 +264,7 @@ app.whenReady().then(() => {
       // add a right-click context menu to the app, includes options to copy, paste, select all, copy image etc.
       contextMenu({
         window: contents,
-        showInspectElement: false,
+        showInspectElement: false
       })
     }
   })

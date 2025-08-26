@@ -1,5 +1,5 @@
 import AutoLaunchAPILinux from './autoLaunchAPI/autoLaunchAPILinux.js'
-import AutoLaunchAPIMac from './autoLaunchAPI/autoLaunchAPIMac.js';
+import AutoLaunchAPIMac from './autoLaunchAPI/autoLaunchAPIMac.js'
 // import AutoLaunchAPIWindows from './autoLaunchAPI/autoLaunchAPIWindows.js';
 
 /* This allows to select the AutoLaunch implementation specific to a  */
@@ -11,7 +11,7 @@ export default function autoLaunchHandler(options) {
   //   return new AutoLaunchAPIWindows(options);
   // }
   if (/darwin/.test(process.platform)) {
-    return new AutoLaunchAPIMac(options);
+    return new AutoLaunchAPIMac(options)
   }
   if (/linux/.test(process.platform) || /freebsd/.test(process.platform)) {
     return new AutoLaunchAPILinux(options)

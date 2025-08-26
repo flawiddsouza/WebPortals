@@ -54,7 +54,9 @@ if (VERSION_ACTION === 'undo') {
   const hasOtherChanges = execSync('git status --porcelain')
     .toString()
     .split('\n')
-    .some(line => line.trim() && !line.includes(PACKAGE_JSON) && !line.includes(PACKAGE_LOCK_JSON))
+    .some(
+      (line) => line.trim() && !line.includes(PACKAGE_JSON) && !line.includes(PACKAGE_LOCK_JSON)
+    )
 
   if (hasOtherChanges) {
     console.warn('Warning: You have uncommitted changes not related to version files.')
@@ -129,7 +131,7 @@ try {
     console.log(`  git tag v${newVersion}`)
     console.log(`  git push origin v${newVersion}`)
   }
-} catch(e) {
+} catch (e) {
   console.error('Error during git operations:', e.message)
 }
 

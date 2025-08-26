@@ -34,19 +34,21 @@ export default function createMenu(mainWindow: BrowserWindow) {
         {
           label: 'About',
           click: () => {
-            dialog.showMessageBox(mainWindow, {
-              message: 'WebPortals',
-              detail: `Version: ${app.getVersion()}\nElectron Version: ${process.versions.electron}\nChromium Version: ${process.versions.chrome}`,
-              buttons: ['OK', 'Open GitHub Release'],
-              cancelId: 0
-            }).then(({ response }) => {
-              if (response === 1) {
-                const releaseUrl = `https://github.com/flawiddsouza/WebPortals/releases/tag/v${app.getVersion()}`;
-                import('open').then((open) => {
-                  open.default(releaseUrl)
-                })
-              }
-            });
+            dialog
+              .showMessageBox(mainWindow, {
+                message: 'WebPortals',
+                detail: `Version: ${app.getVersion()}\nElectron Version: ${process.versions.electron}\nChromium Version: ${process.versions.chrome}`,
+                buttons: ['OK', 'Open GitHub Release'],
+                cancelId: 0
+              })
+              .then(({ response }) => {
+                if (response === 1) {
+                  const releaseUrl = `https://github.com/flawiddsouza/WebPortals/releases/tag/v${app.getVersion()}`
+                  import('open').then((open) => {
+                    open.default(releaseUrl)
+                  })
+                }
+              })
           }
         }
       ]

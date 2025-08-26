@@ -6,7 +6,7 @@ export function initIpc(mainWindow: BrowserWindow) {
     const result = await prompt({
       title: 'Prompt',
       label,
-      value: defaultValue,
+      value: defaultValue
     })
     event.returnValue = result
   })

@@ -7,19 +7,19 @@
       <div
         v-for="service in services"
         :key="service.id"
-        @click="setActiveService(service)"
-        @contextmenu.prevent="handleContextMenu($event, service)"
         :style="{
           fontWeight: activeService?.id === service.id ? 'bold' : 'normal',
           color: service.enabled ? 'white' : '#ffffff69',
           cursor: service.enabled ? 'pointer' : 'cursor'
         }"
+        @click="setActiveService(service)"
+        @contextmenu.prevent="handleContextMenu($event, service)"
       >
         {{ service.name }}
       </div>
       <button
-        @click="showAddServiceModal = true"
         :style="{ marginTop: services.length > 0 ? '0.5rem' : '0' }"
+        @click="showAddServiceModal = true"
       >
         Add Service
       </button>
@@ -29,13 +29,13 @@
         <webview
           v-if="service.enabled"
           v-show="service.id === activeService?.id"
+          v-webview="service.id"
           :src="service.url"
           style="height: 100%; width: 100%; background-color: white"
           :partition="`persist:${service.partitionId}`"
           :useragent="userAgent"
           class="webview"
           allowpopups
-          v-webview="service.id"
           :data-service-id="service.id"
         ></webview>
       </template>
@@ -50,9 +50,9 @@
     :content-style="modalContentStyle"
   >
     <ManageServices
-      :partitions="partitions"
       v-model:services="services"
-      v-model:showPartitionManager="showPartitionManager"
+      v-model:show-partition-manager="showPartitionManager"
+      :partitions="partitions"
     ></ManageServices>
   </VueFinalModal>
 
@@ -70,7 +70,7 @@
     :content-style="modalContentStyle"
   >
     <ScreenPicker
-      :serviceId="activeScreenShareServiceId"
+      :service-id="activeScreenShareServiceId"
       @cancel="cancelScreenSharing"
       @selected="handleScreenSelected"
     />
