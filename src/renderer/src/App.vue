@@ -3,7 +3,10 @@
     style="height: 100dvh; display: grid"
     :style="{ gridTemplateColumns: sidebarVisible ? 'auto 1fr' : '1fr' }"
   >
-    <div v-if="sidebarVisible" style="height: 100%; background-color: lightcoral; padding: 1rem">
+    <div
+      v-if="sidebarVisible"
+      style="height: 100%; background-color: lightcoral; padding: 1rem; overflow-y: auto"
+    >
       <div
         v-for="service in services"
         :key="service.id"
@@ -18,7 +21,7 @@
         {{ service.name }}
       </div>
       <button
-        :style="{ marginTop: services.length > 0 ? '0.5rem' : '0' }"
+        :style="{ marginTop: services.length > 0 ? '0.5rem' : '0', whiteSpace: 'nowrap' }"
         @click="showAddServiceModal = true"
       >
         Add Service
