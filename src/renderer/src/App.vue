@@ -47,7 +47,7 @@
   <VueFinalModal
     v-model="showAddServiceModal"
     style="display: flex; justify-content: center; align-items: center"
-    content-style="background-color: white; padding: 1rem; width: max-content; height: max-content; color: black;"
+    :content-style="modalContentStyle"
   >
     <ManageServices
       :partitions="partitions"
@@ -59,7 +59,7 @@
   <VueFinalModal
     v-model="showPartitionManager"
     style="display: flex; justify-content: center; align-items: center"
-    content-style="background-color: white; padding: 1rem; width: max-content; height: max-content; color: black;"
+    :content-style="modalContentStyle"
   >
     <ManagePartitions v-model:partitions="partitions" />
   </VueFinalModal>
@@ -67,7 +67,7 @@
   <VueFinalModal
     v-model="showScreenPicker"
     style="display: flex; justify-content: center; align-items: center"
-    content-style="width: max-content; height: max-content;"
+    :content-style="modalContentStyle"
   >
     <ScreenPicker
       :serviceId="activeScreenShareServiceId"
@@ -108,6 +108,17 @@ const showScreenPicker = ref(false)
 const activeScreenShareServiceId = ref('')
 const findInPageVisible = ref(false)
 const sidebarVisible = ref(true)
+const modalContentStyle = computed(() => {
+  return {
+    backgroundColor: 'white',
+    padding: '1rem',
+    width: 'max-content',
+    height: 'max-content',
+    color: 'black',
+    maxHeight: '100vh',
+    overflow: 'auto'
+  }
+})
 
 const userAgent = computed(() => {
   return window.navigator.userAgent
