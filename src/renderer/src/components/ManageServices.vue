@@ -52,7 +52,19 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(service, serviceIndex) in services" :key="service.id">
+        <tr
+          v-for="(service, serviceIndex) in services"
+          :key="service.id"
+          :data-index="serviceIndex"
+          draggable="true"
+          :class="{
+            'drag-over': dragOverIndex === serviceIndex,
+            dragging: dragStartIndex === serviceIndex
+          }"
+          @dragstart="onDragStart($event, serviceIndex)"
+          @dragover.prevent="onDragOver($event, serviceIndex)"
+          @drop.prevent="onDrop($event, serviceIndex)"
+        >
           <template v-if="editService?.id !== service.id">
             <td>{{ getPartitionName(service.partitionId) }}</td>
             <td>{{ service.name }}</td>
@@ -135,6 +147,8 @@ const addService = ref<Partial<Service>>({
   enabled: true
 })
 const editService = ref<Service | null>(null)
+const dragStartIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
 
 async function handleCreateService() {
   if (!addService.value.partitionId) {
@@ -247,4 +261,70 @@ async function moveDown(index: number) {
 
   emit('update:services', await getServices())
 }
+
+async function reorderServices(fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex) return
+
+  const services = [...props.services]
+  const [moved] = services.splice(fromIndex, 1)
+  services.splice(toIndex, 0, moved)
+
+  await updateServicesSortOrder(
+    services.map((service, serviceIndex) => ({
+      serviceId: service.id,
+      sortOrder: serviceIndex + 1
+    }))
+  )
+
+  emit('update:services', await getServices())
+}
+
+function onDragStart(e: DragEvent, index: number) {
+  dragStartIndex.value = index
+  try {
+    e.dataTransfer?.setData('text/plain', String(index))
+  } catch (err) {
+    // ignore in environments that block setData
+  }
+}
+
+function onDragOver(_e: DragEvent, index: number) {
+  dragOverIndex.value = index
+}
+
+async function onDrop(e: DragEvent, index: number) {
+  e.preventDefault()
+  let fromIndex: number | null = null
+
+  // Prefer transfer data when available
+  try {
+    const data = e.dataTransfer?.getData('text/plain')
+    if (data !== undefined && data !== null && data !== '') {
+      const parsed = parseInt(data, 10)
+      if (!Number.isNaN(parsed)) fromIndex = parsed
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  if (fromIndex === null) fromIndex = dragStartIndex.value
+  if (fromIndex === null) return
+
+  await reorderServices(fromIndex, index)
+
+  dragStartIndex.value = null
+  dragOverIndex.value = null
+}
 </script>
+
+<style scoped>
+tr.dragging {
+  opacity: 0.6;
+}
+
+tr.drag-over {
+  outline: 3px dashed var(--v-border-color, #3b82f6);
+  outline-offset: -6px;
+  background: rgba(59, 130, 246, 0.06);
+}
+</style>
