@@ -11,6 +11,7 @@ export interface Service {
   name: string
   url: string
   enabled: boolean
+  hidden: boolean
   sortOrder?: number
 }
 
@@ -51,7 +52,13 @@ export async function getServices(): Promise<Service[]> {
   const savedData = localStorage.getItem(`services`)
 
   if (savedData) {
-    const services = JSON.parse(savedData)
+    const services: Service[] = JSON.parse(savedData).map(
+      (service: Service & { hidden?: boolean; enabled?: boolean }) => ({
+        ...service,
+        enabled: service.enabled ?? true,
+        hidden: service.hidden ?? false
+      })
+    )
 
     return services.sort((a: Service, b: Service) => {
       if (a.sortOrder && b.sortOrder) {
@@ -69,10 +76,11 @@ export async function createService(
   partitionId: string,
   name: string,
   url: string,
-  enabled: boolean
+  enabled: boolean,
+  hidden: boolean
 ): Promise<void> {
   const services = await getServices()
-  const newService = { id: nanoid(), partitionId, name, url, enabled }
+  const newService = { id: nanoid(), partitionId, name, url, enabled, hidden }
   services.push(newService)
   localStorage.setItem(`services`, JSON.stringify(services))
 }
@@ -82,7 +90,8 @@ export async function updateService(
   partitionId: string,
   name: string,
   url: string,
-  enabled: boolean
+  enabled: boolean,
+  hidden: boolean
 ): Promise<void> {
   const services = await getServices()
   const service = services.find((service) => service.id === id)
@@ -92,6 +101,7 @@ export async function updateService(
     service.name = name
     service.url = url
     service.enabled = enabled
+    service.hidden = hidden
     localStorage.setItem(`services`, JSON.stringify(services))
   }
 }

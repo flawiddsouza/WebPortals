@@ -34,6 +34,15 @@
         </select>
       </label>
     </div>
+    <div>
+      <label>
+        <div>Hidden</div>
+        <select v-model="addService.hidden">
+          <option :value="false">No</option>
+          <option :value="true">Yes</option>
+        </select>
+      </label>
+    </div>
     <button style="margin-top: 1rem">Add Service</button>
   </form>
 
@@ -47,6 +56,7 @@
           <th>Name</th>
           <th>URL</th>
           <th>Enabled</th>
+          <th>Hidden</th>
           <th>Order</th>
           <th>Actions</th>
         </tr>
@@ -83,6 +93,10 @@
               <template v-if="service.enabled">Yes</template>
               <template v-else>No</template>
             </td>
+            <td style="text-align: center" @click="updateServiceHidden(service)">
+              <template v-if="service.hidden">Yes</template>
+              <template v-else>No</template>
+            </td>
             <td>
               <button @click="moveUp(serviceIndex)">↑</button>
               <button @click="moveDown(serviceIndex)">↓</button>
@@ -106,6 +120,12 @@
               <select v-model="editService.enabled" required>
                 <option :value="true">Yes</option>
                 <option :value="false">No</option>
+              </select>
+            </td>
+            <td style="text-align: center">
+              <select v-model="editService.hidden" required>
+                <option :value="false">No</option>
+                <option :value="true">Yes</option>
               </select>
             </td>
             <td></td>
@@ -144,7 +164,8 @@ const emit = defineEmits<{
 }>()
 
 const addService = ref<Partial<Service>>({
-  enabled: true
+  enabled: true,
+  hidden: false
 })
 const editService = ref<Service | null>(null)
 const dragStartIndex = ref<number | null>(null)
@@ -175,12 +196,14 @@ async function handleCreateService() {
     addService.value.partitionId,
     addService.value.name,
     addService.value.url,
-    addService.value.enabled
+    addService.value.enabled,
+    addService.value.hidden ?? false
   )
   emit('update:services', await getServices())
 
   addService.value = {
-    enabled: true
+    enabled: true,
+    hidden: false
   }
 }
 
@@ -196,7 +219,8 @@ async function handleUpdateService() {
     editService.value.partitionId,
     editService.value.name,
     editService.value.url,
-    editService.value.enabled
+    editService.value.enabled,
+    editService.value.hidden
   )
   emit('update:services', await getServices())
 
@@ -205,7 +229,27 @@ async function handleUpdateService() {
 
 async function updateServiceEnabled(service: Service) {
   service.enabled = !service.enabled
-  await updateService(service.id, service.partitionId, service.name, service.url, service.enabled)
+  await updateService(
+    service.id,
+    service.partitionId,
+    service.name,
+    service.url,
+    service.enabled,
+    service.hidden
+  )
+  emit('update:services', await getServices())
+}
+
+async function updateServiceHidden(service: Service) {
+  service.hidden = !service.hidden
+  await updateService(
+    service.id,
+    service.partitionId,
+    service.name,
+    service.url,
+    service.enabled,
+    service.hidden
+  )
   emit('update:services', await getServices())
 }
 

@@ -8,7 +8,7 @@
       style="height: 100%; background-color: lightcoral; padding: 1rem; overflow-y: auto"
     >
       <div
-        v-for="service in services"
+        v-for="service in visibleServices"
         :key="service.id"
         :style="{
           fontWeight: activeService?.id === service.id ? 'bold' : 'normal',
@@ -21,14 +21,14 @@
         {{ service.name }}
       </div>
       <button
-        :style="{ marginTop: services.length > 0 ? '0.5rem' : '0', whiteSpace: 'nowrap' }"
+        :style="{ marginTop: visibleServices.length > 0 ? '0.5rem' : '0', whiteSpace: 'nowrap' }"
         @click="showAddServiceModal = true"
       >
         Add Service
       </button>
     </div>
     <div style="height: 100%; background-color: plum; position: relative">
-      <template v-for="service in services" :key="service.id">
+      <template v-for="service in visibleServices" :key="service.id">
         <webview
           v-if="service.enabled"
           v-show="service.id === activeService?.id"
@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeMount, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onBeforeMount, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -104,6 +104,7 @@ import ContextMenu from '@imengyu/vue3-context-menu'
 
 const partitions = ref<Partition[]>([])
 const services = ref<Service[]>([])
+const visibleServices = computed(() => services.value.filter((service) => !service.hidden))
 const activeService = ref<Service | null>(null)
 const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
@@ -129,8 +130,8 @@ const userAgent = computed(() => {
     .trim()
 })
 
-function setActiveService(service: Service) {
-  if (!service.enabled) {
+function setActiveService(service: Service | null) {
+  if (!service || !service.enabled || service.hidden) {
     return
   }
 
@@ -139,14 +140,57 @@ function setActiveService(service: Service) {
   saveActiveServiceId(service.id)
 }
 
+function findFirstSelectableService(): Service | null {
+  return services.value.find((service) => service.enabled && !service.hidden) ?? null
+}
+
+function clearActiveService() {
+  activeService.value = null
+  document.title = 'WebPortals'
+  saveActiveServiceId(undefined)
+}
+
+function ensureActiveService() {
+  if (!activeService.value || !activeService.value.enabled || activeService.value.hidden) {
+    const fallback = findFirstSelectableService()
+    if (fallback) {
+      setActiveService(fallback)
+    } else {
+      clearActiveService()
+    }
+  }
+}
+
 interface WebView {
   reload: () => void
   getWebContentsId: () => number
 }
 
 async function updateServiceEnabled(service: Service) {
-  await updateService(service.id, service.partitionId, service.name, service.url, service.enabled)
+  await updateService(
+    service.id,
+    service.partitionId,
+    service.name,
+    service.url,
+    service.enabled,
+    service.hidden
+  )
   services.value = await getServices()
+  ensureActiveService()
+}
+
+async function updateServiceHidden(service: Service) {
+  service.hidden = !service.hidden
+  await updateService(
+    service.id,
+    service.partitionId,
+    service.name,
+    service.url,
+    service.enabled,
+    service.hidden
+  )
+  services.value = await getServices()
+  ensureActiveService()
 }
 
 function handleContextMenu(event: MouseEvent, service: Service) {
@@ -195,6 +239,12 @@ function handleContextMenu(event: MouseEvent, service: Service) {
           service.enabled = !service.enabled
           updateServiceEnabled(service)
         }
+      },
+      {
+        label: service.hidden ? 'Unhide' : 'Hide',
+        onClick: () => {
+          updateServiceHidden(service)
+        }
       }
     ]
   })
@@ -234,6 +284,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown)
   window.electron.ipcRenderer.removeAllListeners('process-keyboard-shortcut')
+})
+
+watch(services, () => {
+  ensureActiveService()
 })
 
 const notificationsClassDefinition = `(() => {
@@ -349,8 +403,14 @@ onBeforeMount(async () => {
   services.value = await getServices()
   const activeServiceId = await getActiveServiceId()
   const serviceToSelect =
-    services.value.find((service) => service.id === activeServiceId) ?? services.value[0]
-  setActiveService(serviceToSelect)
+    services.value.find(
+      (service) => service.id === activeServiceId && service.enabled && !service.hidden
+    ) ?? findFirstSelectableService()
+  if (serviceToSelect) {
+    setActiveService(serviceToSelect)
+  } else {
+    clearActiveService()
+  }
   sidebarVisible.value = await getSidebarVisible()
 
   window.electron.ipcRenderer.on('makeServiceActive', (_event, serviceId) => {
