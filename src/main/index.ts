@@ -2,6 +2,7 @@ import { app, BrowserWindow, Tray, Menu, screen, nativeImage } from 'electron'
 import { basename, dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import iconDev from '../../resources/icon-dev.png?asset'
 import createMenu from './menu'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
@@ -36,6 +37,8 @@ if (is.dev) {
 const appUserModelId = is.dev
   ? 'com.flawiddsouza.WebPortals.Dev'
   : 'com.flawiddsouza.WebPortals'
+
+const appIcon = is.dev ? iconDev : icon
 
 let tray: Tray
 
@@ -83,11 +86,11 @@ function getTrayMenuTemplate(mainWindow: BrowserWindow) {
 }
 
 function createTray(mainWindow: BrowserWindow) {
-  let trayIcon: any = icon
+  let trayIcon: any = appIcon
 
   if (isMac) {
     // On macOS, create a template image (monochrome)
-    const nativeImg = nativeImage.createFromPath(icon)
+    const nativeImg = nativeImage.createFromPath(appIcon)
     // Resize to appropriate size for menu bar
     const resizedImage = nativeImg.resize({ width: 16, height: 16 })
     // Make it a template image so macOS can properly display it
@@ -139,7 +142,7 @@ function createWindow(): void {
     height: winState.height,
     show: false,
     autoHideMenuBar: false,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
