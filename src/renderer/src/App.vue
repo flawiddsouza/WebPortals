@@ -79,6 +79,7 @@
     />
   </VueFinalModal>
 
+  <DownloadManager />
   <ModalsContainer />
 </template>
 
@@ -100,6 +101,7 @@ import ManagePartitions from './components/ManagePartitions.vue'
 import ManageServices from './components/ManageServices.vue'
 import ScreenPicker from './components/ScreenPicker.vue'
 import FindInPage from './components/FindInPage.vue'
+import DownloadManager from './components/DownloadManager.vue'
 import ContextMenu from '@imengyu/vue3-context-menu'
 
 const partitions = ref<Partition[]>([])

@@ -1,7 +1,8 @@
 import { BrowserWindow, ipcMain, webContents, desktopCapturer, screen } from 'electron'
 import prompt from 'custom-electron-prompt'
+import { DownloadManager } from './downloads'
 
-export function initIpc(mainWindow: BrowserWindow) {
+export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadManager) {
   ipcMain.on('prompt', async (event, label, defaultValue) => {
     const result = await prompt({
       title: 'Prompt',
@@ -119,5 +120,25 @@ export function initIpc(mainWindow: BrowserWindow) {
 
   ipcMain.on('webview-keyboard-shortcut', (_event, shortcutData) => {
     mainWindow.webContents.send('process-keyboard-shortcut', shortcutData)
+  })
+
+  ipcMain.handle('download-cancel', (_event, downloadId: string) => {
+    downloadManager.cancelDownload(downloadId)
+  })
+
+  ipcMain.handle('download-open', (_event, savePath: string) => {
+    downloadManager.openDownload(savePath)
+  })
+
+  ipcMain.handle('download-show-in-folder', (_event, savePath: string) => {
+    downloadManager.showInFolder(savePath)
+  })
+
+  ipcMain.handle('download-pause', (_event, downloadId: string) => {
+    return downloadManager.pauseDownload(downloadId)
+  })
+
+  ipcMain.handle('download-resume', (_event, downloadId: string) => {
+    return downloadManager.resumeDownload(downloadId)
   })
 }

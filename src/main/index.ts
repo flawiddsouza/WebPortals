@@ -10,6 +10,7 @@ import contextMenu from 'electron-context-menu'
 import windowStateKeeper from './utils/window-state'
 import AutoLaunch from './utils/auto-launch'
 import { initIpc } from './ipc'
+import { DownloadManager } from './downloads'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
@@ -34,9 +35,7 @@ if (is.dev) {
   app.setName(`${app.getName()} Dev`)
 }
 
-const appUserModelId = is.dev
-  ? 'com.flawiddsouza.WebPortals.Dev'
-  : 'com.flawiddsouza.WebPortals'
+const appUserModelId = is.dev ? 'com.flawiddsouza.WebPortals.Dev' : 'com.flawiddsouza.WebPortals'
 
 const appIcon = is.dev ? iconDev : icon
 
@@ -125,7 +124,7 @@ function windowOpenHandler(details: Electron.HandlerDetails) {
   return { action: 'deny' } as const
 }
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const workAreaSize = screen.getPrimaryDisplay().workAreaSize
   const winStateOptions = {
     defaultWidth: parseInt((workAreaSize.width * 0.75).toString()),
@@ -163,8 +162,10 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
 
-  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
     webPreferences.preload = join(__dirname, '..', 'preload', 'webview.js')
+    // Disable webview's built-in download UI to avoid double dialogs
+    delete (params as any).downloadPath
   })
 
   mainWindow.on('show', () => {
@@ -198,8 +199,6 @@ function createWindow(): void {
 
   createTray(mainWindow)
 
-  initIpc(mainWindow)
-
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -216,6 +215,8 @@ function createWindow(): void {
     mainWindow.focus()
     mainWindow.show()
   })
+
+  return mainWindow
 }
 
 // start application on startup
@@ -272,9 +273,14 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  const mainWindow = createWindow()
+  const downloadManager = new DownloadManager(mainWindow)
+  initIpc(mainWindow, downloadManager)
+
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() === 'webview') {
       contents.setWindowOpenHandler(windowOpenHandler)
+      downloadManager.setupDownloadHandler(contents)
       // add a right-click context menu to the app, includes options to copy, paste, select all, copy image etc.
       contextMenu({
         window: contents,
@@ -282,8 +288,6 @@ app.whenReady().then(() => {
       })
     }
   })
-
-  createWindow()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
