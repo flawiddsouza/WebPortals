@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Tray, Menu, screen, nativeImage } from 'electron'
-import { join } from 'path'
+import { basename, dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import createMenu from './menu'
@@ -25,6 +25,17 @@ console.log('--start-minimized:', argv['start-minimized'])
 if (isMac && argv['start-minimized']) {
   app.dock.hide()
 }
+
+if (is.dev) {
+  const defaultUserData = app.getPath('userData')
+  const devUserData = join(dirname(defaultUserData), `${basename(defaultUserData)}-dev`)
+  app.setPath('userData', devUserData)
+  app.setName(`${app.getName()} Dev`)
+}
+
+const appUserModelId = is.dev
+  ? 'com.flawiddsouza.WebPortals.Dev'
+  : 'com.flawiddsouza.WebPortals'
 
 let tray: Tray
 
@@ -242,7 +253,7 @@ if (!is.dev) {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.flawiddsouza.WebPortals')
+  electronApp.setAppUserModelId(appUserModelId)
 
   const isSingleInstance = app.requestSingleInstanceLock()
 
