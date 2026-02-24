@@ -15,13 +15,18 @@ interface Download {
 export class DownloadManager {
   private downloads = new Map<string, Download>()
   private mainWindow: BrowserWindow
+  private registeredSessions = new Set<Electron.Session>()
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow
   }
 
   setupDownloadHandler(webContents: Electron.WebContents) {
-    webContents.session.on('will-download', (_event, item) => {
+    const session = webContents.session
+    if (this.registeredSessions.has(session)) return
+    this.registeredSessions.add(session)
+
+    session.on('will-download', (_event, item) => {
       const downloadId = randomUUID()
       const defaultPath = join(app.getPath('downloads'), item.getFilename())
 
