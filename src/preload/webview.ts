@@ -23,6 +23,25 @@ function setupKeyboardShortcuts() {
   })
 }
 
+// In a normal browser, text selection continues even when you drag the cursor
+// outside the page. This works because the browser internally calls
+// setPointerCapture when selection starts, routing all subsequent pointer events
+// to the element regardless of cursor position.
+//
+// In Electron, webviews run as OOPIFs (out-of-process iframes). When the cursor
+// moves from the webview into the parent frame (e.g. the sidebar), the parent
+// process receives pointer events instead of the webview process — so selection
+// cuts off. Electron doesn't propagate pointer capture cross-process automatically.
+//
+// Calling setPointerCapture explicitly here replicates that behavior: it tells
+// Chromium to keep routing pointer events to the webview process even when the
+// cursor is physically over the parent frame.
+document.addEventListener('pointerdown', (event) => {
+  if (event.button === 0 && event.target) {
+    ;(event.target as Element).setPointerCapture(event.pointerId)
+  }
+})
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', setupKeyboardShortcuts)
 } else {
