@@ -166,6 +166,11 @@ function createWindow(): BrowserWindow {
     webPreferences.preload = join(__dirname, '..', 'preload', 'webview.js')
     // Disable webview's built-in download UI to avoid double dialogs
     delete (params as any).downloadPath
+    // Match Chrome's OS-specific font defaults
+    if (isWindows) {
+      // Electron defaults to Courier New on Windows; Chrome uses Consolas
+      webPreferences.defaultFontFamily = { monospace: 'Consolas' }
+    }
   })
 
   mainWindow.on('show', () => {
