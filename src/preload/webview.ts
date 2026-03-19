@@ -38,7 +38,12 @@ function setupKeyboardShortcuts() {
 // cursor is physically over the parent frame.
 document.addEventListener('pointerdown', (event) => {
   if (event.button === 0 && event.target) {
-    ;(event.target as Element).setPointerCapture(event.pointerId)
+    const target = event.target as Element
+    // Skip inputs: they have internal shadow-DOM controls (e.g. the clear button
+    // on input[type=search]) whose clicks are broken by pointer capture.
+    // Inputs manage their own pointer events natively, so they don't need this.
+    if (target.tagName === 'INPUT') return
+    target.setPointerCapture(event.pointerId)
   }
 })
 
