@@ -41,6 +41,83 @@
           allowpopups
           :data-service-id="service.id"
         ></webview>
+        <div
+          v-if="failedServices.has(service.id) && service.id === activeService?.id"
+          style="
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            gap: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          "
+        >
+          <svg width="72" height="72" viewBox="0 0 72 72" fill="none" style="margin-bottom: 1.5rem">
+            <circle cx="36" cy="36" r="32" fill="#e5e7eb" />
+            <path
+              d="M24 24l24 24M48 24L24 48"
+              stroke="#9ca3af"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <p style="margin: 0 0 0.5rem; font-size: 1.4rem; font-weight: 600; color: #1f2937">
+            {{ failedServices.get(service.id)!.title }}
+          </p>
+          <p
+            style="
+              margin: 0 0 0.75rem;
+              font-size: 0.95rem;
+              color: #6b7280;
+              max-width: 380px;
+              text-align: center;
+              line-height: 1.5;
+            "
+          >
+            {{ failedServices.get(service.id)!.message }}
+          </p>
+          <p
+            style="
+              margin: 0 0 1.5rem;
+              font-size: 0.85rem;
+              color: #9ca3af;
+              max-width: 480px;
+              text-align: center;
+              overflow-wrap: break-word;
+            "
+          >
+            {{ service.url }}
+          </p>
+          <code
+            style="
+              margin-bottom: 1.5rem;
+              font-size: 0.75rem;
+              color: #6b7280;
+              background: #e5e7eb;
+              padding: 0.2rem 0.5rem;
+              border-radius: 4px;
+            "
+            >{{ failedServices.get(service.id)!.raw }}</code
+          >
+          <button
+            @click="retryService(service)"
+            style="
+              padding: 0.5rem 1.5rem;
+              background: #2563eb;
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-size: 0.9rem;
+              cursor: pointer;
+              font-family: inherit;
+            "
+          >
+            Retry
+          </button>
+        </div>
       </template>
 
       <FindInPage v-model:visible="findInPageVisible" :webview-id="activeService?.id || null" />
@@ -84,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeMount, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, reactive, onBeforeMount, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -380,8 +457,70 @@ const displayMediaPatchCode = `
   })();
 `
 
+const failedServices = reactive(new Map<string, { title: string; message: string; raw: string }>())
+
+function toFriendlyError(errorDescription: string): { title: string; message: string } {
+  switch (errorDescription) {
+    case 'ERR_NAME_NOT_RESOLVED':
+      return {
+        title: "This site can't be reached",
+        message: 'Check if there is a typo in the address.'
+      }
+    case 'ERR_INTERNET_DISCONNECTED':
+      return {
+        title: 'No internet connection',
+        message: 'Try checking your network cables, modem, and router.'
+      }
+    case 'ERR_CONNECTION_REFUSED':
+      return { title: "This site can't be reached", message: 'The connection was refused.' }
+    case 'ERR_ADDRESS_UNREACHABLE':
+      return { title: "This site can't be reached", message: 'The address is unreachable.' }
+    case 'ERR_CONNECTION_TIMED_OUT':
+      return {
+        title: 'This site is taking too long to respond',
+        message: 'Try checking your proxy and firewall configuration.'
+      }
+    case 'ERR_CONNECTION_RESET':
+      return { title: "This site can't be reached", message: 'The connection was reset.' }
+    case 'ERR_NETWORK_CHANGED':
+      return { title: 'Connection interrupted', message: 'A network change was detected.' }
+    case 'ERR_CERT_AUTHORITY_INVALID':
+    case 'ERR_CERT_DATE_INVALID':
+      return {
+        title: 'Your connection is not private',
+        message: "The site's security certificate is not trusted."
+      }
+    default:
+      return { title: "This page isn't working", message: 'An unexpected error occurred.' }
+  }
+}
+
+function retryService(service: Service) {
+  failedServices.delete(service.id)
+  const webview = document.querySelector(`.webview[data-service-id="${service.id}"]`) as any
+  if (webview) {
+    webview.loadURL(service.url)
+  }
+}
+
 const vWebview = {
   mounted(el: HTMLElement, binding: any) {
+    const serviceId: string = binding.value
+
+    el.addEventListener('did-fail-load', (event: any) => {
+      if (event.errorCode === -3) return // ERR_ABORTED — redirect or user cancelled
+      failedServices.set(serviceId, {
+        ...toFriendlyError(event.errorDescription),
+        raw: event.errorDescription
+      })
+    })
+
+    el.addEventListener('did-navigate', (event: any) => {
+      if (event.url && !event.url.startsWith('chrome-error://')) {
+        failedServices.delete(serviceId)
+      }
+    })
+
     el.addEventListener('dom-ready', () => {
       // el.openDevTools()
       // @ts-expect-error
