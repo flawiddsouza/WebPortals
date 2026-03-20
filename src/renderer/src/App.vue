@@ -42,6 +42,59 @@
           :data-service-id="service.id"
         ></webview>
         <div
+          v-if="loadingServices.has(service.id) && service.id === activeService?.id"
+          style="
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: #f8f9fa;
+          "
+        >
+          <span
+            style="
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: #ef4444;
+              animation: bounce 1s ease-in-out infinite;
+              animation-delay: 0s;
+            "
+          ></span>
+          <span
+            style="
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: #f59e0b;
+              animation: bounce 1s ease-in-out infinite;
+              animation-delay: 0.15s;
+            "
+          ></span>
+          <span
+            style="
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: #22c55e;
+              animation: bounce 1s ease-in-out infinite;
+              animation-delay: 0.3s;
+            "
+          ></span>
+          <span
+            style="
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              background: #3b82f6;
+              animation: bounce 1s ease-in-out infinite;
+              animation-delay: 0.45s;
+            "
+          ></span>
+        </div>
+        <div
           v-if="failedServices.has(service.id) && service.id === activeService?.id"
           style="
             position: absolute;
@@ -242,6 +295,7 @@ function ensureActiveService() {
 
 interface WebView {
   reload: () => void
+  loadURL: (url: string) => void
   getWebContentsId: () => number
 }
 
@@ -287,7 +341,9 @@ function handleContextMenu(event: MouseEvent, service: Service) {
             `.webview[data-service-id="${service.id}"]`
           ) as WebView | null
           if (webview) {
-            webview.reload()
+            failedServices.delete(service.id)
+            loadingServices.add(service.id)
+            webview.loadURL(service.url)
           }
         },
         disabled: !service.enabled
@@ -458,6 +514,7 @@ const displayMediaPatchCode = `
 `
 
 const failedServices = reactive(new Map<string, { title: string; message: string; raw: string }>())
+const loadingServices = reactive(new Set<string>())
 
 function toFriendlyError(errorDescription: string): { title: string; message: string } {
   switch (errorDescription) {
@@ -497,6 +554,7 @@ function toFriendlyError(errorDescription: string): { title: string; message: st
 
 function retryService(service: Service) {
   failedServices.delete(service.id)
+  loadingServices.add(service.id)
   const webview = document.querySelector(`.webview[data-service-id="${service.id}"]`) as any
   if (webview) {
     webview.loadURL(service.url)
@@ -507,8 +565,15 @@ const vWebview = {
   mounted(el: HTMLElement, binding: any) {
     const serviceId: string = binding.value
 
+    loadingServices.add(serviceId)
+
+    el.addEventListener('did-finish-load', () => {
+      loadingServices.delete(serviceId)
+    })
+
     el.addEventListener('did-fail-load', (event: any) => {
-      if (event.errorCode === -3) return // ERR_ABORTED — redirect or user cancelled
+      if (event.errorCode === -3) return // ERR_ABORTED — redirect, did-finish-load will fire
+      loadingServices.delete(serviceId)
       failedServices.set(serviceId, {
         ...toFriendlyError(event.errorDescription),
         raw: event.errorDescription
@@ -588,3 +653,15 @@ function handleScreenSelected(constraints: any) {
   window.electron.ipcRenderer.invoke('screen-picker-response', constraints)
 }
 </script>
+
+<style>
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+</style>
