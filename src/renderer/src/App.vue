@@ -349,6 +349,25 @@ function handleContextMenu(event: MouseEvent, service: Service) {
         disabled: !service.enabled
       },
       {
+        label: 'Reload Partition',
+        onClick: () => {
+          const partitionServices = services.value.filter(
+            (s) => s.partitionId === service.partitionId && s.enabled
+          )
+          for (const s of partitionServices) {
+            failedServices.delete(s.id)
+            loadingServices.add(s.id)
+            const webview = document.querySelector(
+              `.webview[data-service-id="${s.id}"]`
+            ) as WebView | null
+            if (webview) {
+              webview.loadURL(s.url)
+            }
+          }
+        },
+        disabled: !service.enabled
+      },
+      {
         label: 'Inspect',
         onClick: () => {
           const webview = document.querySelector(
