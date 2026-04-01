@@ -1,6 +1,6 @@
 <template>
   <div
-    style="height: 100dvh; display: grid"
+    style="height: 100dvh; display: grid; position: relative; overflow: hidden"
     :style="{ gridTemplateColumns: sidebarVisible ? 'auto 1fr' : '1fr' }"
   >
     <div
@@ -27,153 +27,52 @@
         Add Service
       </button>
     </div>
-    <div style="height: 100%; background-color: plum; position: relative">
-      <template v-for="service in visibleServices" :key="service.id">
-        <webview
-          v-if="service.enabled"
-          v-show="service.id === activeService?.id"
-          v-webview="service.id"
-          :src="service.url"
-          style="height: 100%; width: 100%; background-color: white"
-          :partition="`persist:${service.partitionId}`"
-          :useragent="userAgent"
-          class="webview"
-          allowpopups
-          :data-service-id="service.id"
-        ></webview>
-        <div
-          v-if="loadingServices.has(service.id) && service.id === activeService?.id"
-          style="
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            background: #f8f9fa;
-          "
-        >
-          <span
-            style="
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              background: #ef4444;
-              animation: bounce 1s ease-in-out infinite;
-              animation-delay: 0s;
-            "
-          ></span>
-          <span
-            style="
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              background: #f59e0b;
-              animation: bounce 1s ease-in-out infinite;
-              animation-delay: 0.15s;
-            "
-          ></span>
-          <span
-            style="
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              background: #22c55e;
-              animation: bounce 1s ease-in-out infinite;
-              animation-delay: 0.3s;
-            "
-          ></span>
-          <span
-            style="
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              background: #3b82f6;
-              animation: bounce 1s ease-in-out infinite;
-              animation-delay: 0.45s;
-            "
-          ></span>
-        </div>
-        <div
-          v-if="failedServices.has(service.id) && service.id === activeService?.id"
-          style="
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: #f8f9fa;
-            gap: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          "
-        >
-          <svg width="72" height="72" viewBox="0 0 72 72" fill="none" style="margin-bottom: 1.5rem">
-            <circle cx="36" cy="36" r="32" fill="#e5e7eb" />
-            <path
-              d="M24 24l24 24M48 24L24 48"
-              stroke="#9ca3af"
-              stroke-width="5"
-              stroke-linecap="round"
-            />
-          </svg>
-          <p style="margin: 0 0 0.5rem; font-size: 1.4rem; font-weight: 600; color: #1f2937">
-            {{ failedServices.get(service.id)!.title }}
-          </p>
-          <p
-            style="
-              margin: 0 0 0.75rem;
-              font-size: 0.95rem;
-              color: #6b7280;
-              max-width: 380px;
-              text-align: center;
-              line-height: 1.5;
-            "
-          >
-            {{ failedServices.get(service.id)!.message }}
-          </p>
-          <p
-            style="
-              margin: 0 0 1.5rem;
-              font-size: 0.85rem;
-              color: #9ca3af;
-              max-width: 480px;
-              text-align: center;
-              overflow-wrap: break-word;
-            "
-          >
-            {{ service.url }}
-          </p>
-          <code
-            style="
-              margin-bottom: 1.5rem;
-              font-size: 0.75rem;
-              color: #6b7280;
-              background: #e5e7eb;
-              padding: 0.2rem 0.5rem;
-              border-radius: 4px;
-            "
-            >{{ failedServices.get(service.id)!.raw }}</code
-          >
-          <button
-            @click="retryService(service)"
-            style="
-              padding: 0.5rem 1.5rem;
-              background: #2563eb;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              font-size: 0.9rem;
-              cursor: pointer;
-              font-family: inherit;
-            "
-          >
-            Retry
-          </button>
-        </div>
-      </template>
+    <div
+      style="height: 100%; background-color: plum; position: relative; display: grid"
+      :style="{
+        gridTemplateRows: effectiveInspectorVisible
+          ? `minmax(0, 1fr) ${currentInspectorHeight}px`
+          : 'minmax(0, 1fr)'
+      }"
+    >
+      <div style="position: relative; min-height: 0">
+        <template v-for="service in visibleServices" :key="service.id">
+          <webview
+            v-if="service.enabled"
+            v-show="service.id === activeService?.id"
+            v-webview="service.id"
+            :src="service.url"
+            style="height: 100%; width: 100%; background-color: white"
+            :partition="`persist:${service.partitionId}`"
+            :useragent="userAgent"
+            class="webview"
+            allowpopups
+            :data-service-id="service.id"
+          ></webview>
+          <ServiceStatusOverlay
+            v-if="service.id === activeService?.id"
+            :loading="loadingServices.has(service.id)"
+            :error="failedServices.get(service.id) ?? null"
+            :service-url="service.url"
+            @retry="retryService(service)"
+          />
+        </template>
 
-      <FindInPage v-model:visible="findInPageVisible" :webview-id="activeService?.id || null" />
+        <FindInPage v-model:visible="findInPageVisible" :webview-id="activeService?.id || null" />
+      </div>
+
+      <EmbeddedInspectorPane
+        v-if="effectiveInspectorVisible"
+        :title="inspectorServiceTitle"
+        :resize-hotzone="inspectorResizeHotzone"
+        :resizing="isInspectorResizing"
+        @close="closeActiveInspector"
+        @resize-handle-mousedown="startInspectorResizeFromNav"
+        @resize-handle-mousemove="updateInspectorResizeHotzone"
+        @resize-handle-leave="clearInspectorResizeHotzone"
+      >
+        <div ref="inspectorContentRef" style="min-height: 0; height: 100%"></div>
+      </EmbeddedInspectorPane>
     </div>
   </div>
 
@@ -214,7 +113,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onBeforeMount, onMounted, onBeforeUnmount, watch } from 'vue'
+import {
+  ref,
+  computed,
+  reactive,
+  nextTick,
+  onBeforeMount,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  type ObjectDirective
+} from 'vue'
 import { ModalsContainer, VueFinalModal } from 'vue-final-modal'
 import 'vue-final-modal/style.css'
 import type { Partition, Service } from './db'
@@ -232,7 +141,41 @@ import ManageServices from './components/ManageServices.vue'
 import ScreenPicker from './components/ScreenPicker.vue'
 import FindInPage from './components/FindInPage.vue'
 import DownloadManager from './components/DownloadManager.vue'
+import ServiceStatusOverlay from './components/ServiceStatusOverlay.vue'
+import EmbeddedInspectorPane from './components/EmbeddedInspectorPane.vue'
 import ContextMenu from '@imengyu/vue3-context-menu'
+import { useEmbeddedInspector } from './composables/useEmbeddedInspector'
+import { getServiceWebview, type ServiceWebview } from './webview'
+
+interface WebviewKeyboardShortcut {
+  ctrlKey: boolean
+  metaKey: boolean
+  key: string
+  serviceId?: string
+}
+
+interface WebviewDidFailLoadEvent extends Event {
+  errorCode: number
+  errorDescription: string
+}
+
+interface WebviewDidNavigateEvent extends Event {
+  url?: string
+}
+
+interface DesktopCaptureConstraints {
+  audio: boolean
+  video: {
+    mandatory: {
+      chromeMediaSource: string
+      chromeMediaSourceId: string
+      minWidth: number
+      maxWidth: number
+      minHeight: number
+      maxHeight: number
+    }
+  }
+}
 
 const partitions = ref<Partition[]>([])
 const services = ref<Service[]>([])
@@ -244,6 +187,10 @@ const showScreenPicker = ref(false)
 const activeScreenShareServiceId = ref('')
 const findInPageVisible = ref(false)
 const sidebarVisible = ref(true)
+let removeProcessKeyboardShortcutListener: (() => void) | null = null
+let removeMakeServiceActiveListener: (() => void) | null = null
+let removeRequestScreenSharingListener: (() => void) | null = null
+let removeToggleSidebarListener: (() => void) | null = null
 const modalContentStyle = computed(() => {
   return {
     backgroundColor: 'white',
@@ -293,11 +240,25 @@ function ensureActiveService() {
   }
 }
 
-interface WebView {
-  reload: () => void
-  loadURL: (url: string) => void
-  getWebContentsId: () => number
-}
+const {
+  clearInspectorResizeHotzone,
+  closeActiveInspector,
+  currentInspectorHeight,
+  effectiveInspectorVisible,
+  inspectorContentRef,
+  inspectorResizeHotzone,
+  inspectorServiceTitle,
+  isInspectorResizing,
+  markServiceReady,
+  openInspector,
+  startInspectorResizeFromNav,
+  syncInspectorBounds,
+  updateInspectorResizeHotzone
+} = useEmbeddedInspector({
+  services,
+  activeService,
+  setActiveService
+})
 
 async function updateServiceEnabled(service: Service) {
   await updateService(
@@ -337,9 +298,7 @@ function handleContextMenu(event: MouseEvent, service: Service) {
       {
         label: 'Reload',
         onClick: () => {
-          const webview = document.querySelector(
-            `.webview[data-service-id="${service.id}"]`
-          ) as WebView | null
+          const webview = getServiceWebview(service.id)
           if (webview) {
             failedServices.delete(service.id)
             loadingServices.add(service.id)
@@ -357,9 +316,7 @@ function handleContextMenu(event: MouseEvent, service: Service) {
           for (const s of partitionServices) {
             failedServices.delete(s.id)
             loadingServices.add(s.id)
-            const webview = document.querySelector(
-              `.webview[data-service-id="${s.id}"]`
-            ) as WebView | null
+            const webview = getServiceWebview(s.id)
             if (webview) {
               webview.loadURL(s.url)
             }
@@ -370,12 +327,7 @@ function handleContextMenu(event: MouseEvent, service: Service) {
       {
         label: 'Inspect',
         onClick: () => {
-          const webview = document.querySelector(
-            `.webview[data-service-id="${service.id}"]`
-          ) as WebView | null
-          if (webview) {
-            window.electron.ipcRenderer.invoke('openDevTools', webview.getWebContentsId())
-          }
+          void openInspector(service)
         },
         disabled: !service.enabled
       },
@@ -412,7 +364,7 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
-function handleWebviewKeyboardShortcut(shortcutData: any) {
+function handleWebviewKeyboardShortcut(shortcutData: WebviewKeyboardShortcut) {
   console.log('Received keyboard shortcut from webview:', shortcutData)
   if ((shortcutData.ctrlKey || shortcutData.metaKey) && shortcutData.key === 'f') {
     findInPageVisible.value = true
@@ -430,14 +382,20 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
 
   // Listen for keyboard shortcuts from webviews
-  window.electron.ipcRenderer.on('process-keyboard-shortcut', (_event, shortcutData) => {
-    handleWebviewKeyboardShortcut(shortcutData)
-  })
+  removeProcessKeyboardShortcutListener = window.electron.ipcRenderer.on(
+    'process-keyboard-shortcut',
+    (_event, shortcutData: WebviewKeyboardShortcut) => {
+      handleWebviewKeyboardShortcut(shortcutData)
+    }
+  )
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown)
-  window.electron.ipcRenderer.removeAllListeners('process-keyboard-shortcut')
+  removeProcessKeyboardShortcutListener?.()
+  removeMakeServiceActiveListener?.()
+  removeRequestScreenSharingListener?.()
+  removeToggleSidebarListener?.()
 })
 
 watch(services, () => {
@@ -574,15 +532,15 @@ function toFriendlyError(errorDescription: string): { title: string; message: st
 function retryService(service: Service) {
   failedServices.delete(service.id)
   loadingServices.add(service.id)
-  const webview = document.querySelector(`.webview[data-service-id="${service.id}"]`) as any
+  const webview = getServiceWebview(service.id)
   if (webview) {
     webview.loadURL(service.url)
   }
 }
 
-const vWebview = {
-  mounted(el: HTMLElement, binding: any) {
-    const serviceId: string = binding.value
+const vWebview: ObjectDirective<ServiceWebview, string> = {
+  mounted(el, binding) {
+    const serviceId = binding.value
 
     loadingServices.add(serviceId)
 
@@ -590,26 +548,28 @@ const vWebview = {
       loadingServices.delete(serviceId)
     })
 
-    el.addEventListener('did-fail-load', (event: any) => {
-      if (event.errorCode === -3) return // ERR_ABORTED — redirect, did-finish-load will fire
+    el.addEventListener('did-fail-load', (event) => {
+      const loadFailure = event as WebviewDidFailLoadEvent
+      if (loadFailure.errorCode === -3) return // ERR_ABORTED — redirect, did-finish-load will fire
       loadingServices.delete(serviceId)
       failedServices.set(serviceId, {
-        ...toFriendlyError(event.errorDescription),
-        raw: event.errorDescription
+        ...toFriendlyError(loadFailure.errorDescription),
+        raw: loadFailure.errorDescription
       })
     })
 
-    el.addEventListener('did-navigate', (event: any) => {
-      if (event.url && !event.url.startsWith('chrome-error://')) {
+    el.addEventListener('did-navigate', (event) => {
+      const navigation = event as WebviewDidNavigateEvent
+      if (navigation.url && !navigation.url.startsWith('chrome-error://')) {
         failedServices.delete(serviceId)
       }
     })
 
     el.addEventListener('dom-ready', () => {
+      markServiceReady(serviceId)
       // el.openDevTools()
-      // @ts-expect-error
       el.executeJavaScript(`
-        window._serviceId = '${binding.value}';
+        window._serviceId = '${serviceId}';
         window.prompt = window.WebPortals.prompt;
         ${notificationsClassDefinition}
         ${displayMediaPatchCode}
@@ -638,22 +598,30 @@ onBeforeMount(async () => {
   }
   sidebarVisible.value = await getSidebarVisible()
 
-  window.electron.ipcRenderer.on('makeServiceActive', (_event, serviceId) => {
-    const service = services.value.find((service) => service.id === serviceId)
-    if (service) {
-      setActiveService(service)
+  removeMakeServiceActiveListener = window.electron.ipcRenderer.on(
+    'makeServiceActive',
+    (_event, serviceId: string) => {
+      const service = services.value.find((item) => item.id === serviceId)
+      if (service) {
+        setActiveService(service)
+      }
     }
-  })
+  )
 
-  window.electron.ipcRenderer.on('request-screen-sharing', (_event, serviceId) => {
-    console.log('Received request-screen-sharing for service:', serviceId)
-    activeScreenShareServiceId.value = serviceId
-    showScreenPicker.value = true
-  })
+  removeRequestScreenSharingListener = window.electron.ipcRenderer.on(
+    'request-screen-sharing',
+    (_event, serviceId: string) => {
+      console.log('Received request-screen-sharing for service:', serviceId)
+      activeScreenShareServiceId.value = serviceId
+      showScreenPicker.value = true
+    }
+  )
 
-  window.electron.ipcRenderer.on('toggle-sidebar', async () => {
+  removeToggleSidebarListener = window.electron.ipcRenderer.on('toggle-sidebar', async () => {
     sidebarVisible.value = !sidebarVisible.value
     await saveSidebarVisible(sidebarVisible.value)
+    await nextTick()
+    await syncInspectorBounds()
   })
 })
 
@@ -663,7 +631,7 @@ function cancelScreenSharing() {
   window.electron.ipcRenderer.invoke('screen-picker-response', null)
 }
 
-function handleScreenSelected(constraints: any) {
+function handleScreenSelected(constraints: DesktopCaptureConstraints | null) {
   console.log(
     'User selected screen sharing source:',
     constraints ? 'constraints available' : 'no constraints'
@@ -672,15 +640,3 @@ function handleScreenSelected(constraints: any) {
   window.electron.ipcRenderer.invoke('screen-picker-response', constraints)
 }
 </script>
-
-<style>
-@keyframes bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-14px);
-  }
-}
-</style>

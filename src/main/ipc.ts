@@ -1,8 +1,11 @@
-import { BrowserWindow, ipcMain, webContents, desktopCapturer, screen } from 'electron'
+import { BrowserWindow, ipcMain, desktopCapturer, screen, type Rectangle } from 'electron'
 import prompt from 'custom-electron-prompt'
 import { DownloadManager } from './downloads'
+import { createEmbeddedDevToolsManager } from './embeddedDevTools'
 
 export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadManager) {
+  const embeddedDevTools = createEmbeddedDevToolsManager(mainWindow)
+
   ipcMain.on('prompt', async (event, label, defaultValue) => {
     const result = await prompt({
       title: 'Prompt',
@@ -25,31 +28,37 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
     }
   })
 
-  ipcMain.handle('openDevTools', async (_event, webContentsId) => {
-    const webview = webContents.fromId(webContentsId)
-    if (!webview) {
-      throw new Error(`Invalid webContentsId: ${webContentsId}`)
+  ipcMain.handle(
+    'openDevTools',
+    async (_event, serviceId: string, webContentsId: number, bounds: Rectangle) => {
+      embeddedDevTools.open(serviceId, webContentsId, bounds)
     }
+  )
 
-    // event.sender === mainWindow.webContents
+  ipcMain.handle('closeDevTools', async (_event, serviceId: string) => {
+    embeddedDevTools.close(serviceId)
+  })
 
-    // event.sender.openDevTools({
-    //   mode: 'right'
-    // })
+  ipcMain.handle('setDevToolsBounds', async (_event, serviceId: string, bounds: Rectangle) => {
+    embeddedDevTools.setBounds(serviceId, bounds)
+  })
 
-    // while (!event.sender.devToolsWebContents) {
-    //   await new Promise(resolve => setTimeout(resolve, 100));
-    // }
+  ipcMain.handle('setDevToolsVisible', async (_event, serviceId: string, visible: boolean) => {
+    embeddedDevTools.setVisible(serviceId, visible)
+  })
 
-    // webview.setDevToolsWebContents(event.sender.devToolsWebContents)
+  mainWindow.webContents.on('devtools-opened', () => {
+    embeddedDevTools.hideWhenMainDevToolsOpen()
+    mainWindow.webContents.send('main-devtools-visibility', true)
+  })
 
-    webview.openDevTools()
+  mainWindow.webContents.on('devtools-closed', () => {
+    embeddedDevTools.hideWhenMainDevToolsOpen()
+    mainWindow.webContents.send('main-devtools-visibility', false)
+  })
 
-    while (!webview.devToolsWebContents) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-
-    webview.devToolsWebContents.focus()
+  ipcMain.handle('isMainDevToolsOpen', async () => {
+    return embeddedDevTools.isMainDevToolsOpen()
   })
 
   ipcMain.handle('get-screens', async () => {
