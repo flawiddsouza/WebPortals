@@ -25,7 +25,7 @@ const argv = yargs(hideBin(process.argv)).option('start-minimized', {
 console.log('--start-minimized:', argv['start-minimized'])
 
 if (isMac && argv['start-minimized']) {
-  app.dock.hide()
+  app.dock?.hide()
 }
 
 if (is.dev) {
@@ -178,7 +178,7 @@ function createWindow(): BrowserWindow {
       tray.setContextMenu(getTrayMenuTemplate(mainWindow))
     }
     if (isMac) {
-      app.dock.show()
+      app.dock?.show()
     }
   })
 
@@ -187,7 +187,7 @@ function createWindow(): BrowserWindow {
       tray.setContextMenu(getTrayMenuTemplate(mainWindow))
     }
     if (isMac) {
-      app.dock.hide()
+      app.dock?.hide()
     }
   })
 
