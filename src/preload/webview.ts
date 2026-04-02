@@ -57,6 +57,32 @@ contextBridge.exposeInMainWorld('WebPortals', {
   prompt(...args: any[]) {
     return ipcRenderer.sendSync('prompt', ...args)
   },
+  queryPermissionSync(
+    permission:
+      | 'fileSystem'
+      | 'camera'
+      | 'microphone'
+      | 'notifications'
+      | 'geolocation'
+      | 'clipboardRead'
+      | 'clipboardWrite',
+    mode?: 'readable' | 'writable'
+  ) {
+    return ipcRenderer.sendSync('permission-query-sync', { permission, mode })
+  },
+  requestPermission(
+    permission:
+      | 'fileSystem'
+      | 'camera'
+      | 'microphone'
+      | 'notifications'
+      | 'geolocation'
+      | 'clipboardRead'
+      | 'clipboardWrite',
+    mode?: 'readable' | 'writable'
+  ) {
+    return ipcRenderer.invoke('permission-request', { permission, mode })
+  },
   notificationClick(serviceId: string) {
     ipcRenderer.send('notificationClick', serviceId)
   },
@@ -75,5 +101,13 @@ contextBridge.exposeInMainWorld('WebPortals', {
           reject(err)
         })
     })
+  },
+  queryFileSystemPermission(mode: 'readable' | 'writable' = 'readable') {
+    return Promise.resolve(
+      ipcRenderer.sendSync('permission-query-sync', { permission: 'fileSystem', mode })
+    )
+  },
+  requestFileSystemPermission(mode: 'readable' | 'writable' = 'readable') {
+    return ipcRenderer.invoke('permission-request', { permission: 'fileSystem', mode })
   }
 })

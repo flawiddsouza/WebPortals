@@ -85,6 +85,7 @@
       v-model:services="services"
       v-model:show-partition-manager="showPartitionManager"
       :partitions="partitions"
+      @manage-permissions="openPermissionManager"
     ></ManageServices>
   </VueFinalModal>
 
@@ -106,6 +107,14 @@
       @cancel="cancelScreenSharing"
       @selected="handleScreenSelected"
     />
+  </VueFinalModal>
+
+  <VueFinalModal
+    v-model="showPermissionManager"
+    style="display: flex; justify-content: center; align-items: center"
+    :content-style="modalContentStyle"
+  >
+    <ManagePermissions :service="permissionService" :target-url="permissionTargetUrl" />
   </VueFinalModal>
 
   <DownloadManager />
@@ -137,6 +146,7 @@ import {
   saveSidebarVisible
 } from './db'
 import ManagePartitions from './components/ManagePartitions.vue'
+import ManagePermissions from './components/ManagePermissions.vue'
 import ManageServices from './components/ManageServices.vue'
 import ScreenPicker from './components/ScreenPicker.vue'
 import FindInPage from './components/FindInPage.vue'
@@ -183,8 +193,11 @@ const visibleServices = computed(() => services.value.filter((service) => !servi
 const activeService = ref<Service | null>(null)
 const showAddServiceModal = ref(false)
 const showPartitionManager = ref(false)
+const showPermissionManager = ref(false)
 const showScreenPicker = ref(false)
 const activeScreenShareServiceId = ref('')
+const permissionService = ref<Service | null>(null)
+const permissionTargetUrl = ref('')
 const findInPageVisible = ref(false)
 const sidebarVisible = ref(true)
 let removeProcessKeyboardShortcutListener: (() => void) | null = null
@@ -287,6 +300,15 @@ async function updateServiceHidden(service: Service) {
   ensureActiveService()
 }
 
+function openPermissionManager(service: Service) {
+  permissionService.value = service
+  const webview = getServiceWebview(service.id)
+  const currentUrl = webview?.getURL?.()
+  permissionTargetUrl.value =
+    currentUrl && !currentUrl.startsWith('chrome-error://') ? currentUrl : service.url
+  showPermissionManager.value = true
+}
+
 function handleContextMenu(event: MouseEvent, service: Service) {
   event.preventDefault()
 
@@ -338,6 +360,12 @@ function handleContextMenu(event: MouseEvent, service: Service) {
           findInPageVisible.value = true
         },
         disabled: !service.enabled
+      },
+      {
+        label: 'Permissions',
+        onClick: () => {
+          openPermissionManager(service)
+        }
       },
       {
         label: service.enabled ? 'Disable' : 'Enable',
@@ -405,52 +433,54 @@ watch(services, () => {
 const notificationsClassDefinition = `(() => {
 const originalNotification = window.Notification;
 
-class Notification {
-  static permission = 'granted';
-
-  constructor(title, options) {
-    const notification = new originalNotification(title, options);
-
-    console.log('Notification created:', title, options);
-
-    notification.onclick = () => {
-      window.WebPortals.notificationClick(window._serviceId);
-      this.onclick();
-    };
-
-    notification.onclose = () => {
-      this.onclose();
-    };
-
-    notification.onerror = () => {
-      this.onerror();
-    };
-
-    notification.onshow = () => {
-      this.onshow();
-    };
-  }
-
-  static requestPermission(cb) {
-    if (typeof cb === 'function') {
-      cb(Notification.permission);
-    }
-
-    return Promise.resolve(Notification.permission);
-  }
-
-  onclick() {}
-
-  onclose() {}
-
-  onerror() {}
-
-  onshow() {}
-
-  close() {}
+if (!originalNotification) {
+  return;
 }
 
-window.Notification = Notification;
+const toBrowserPermission = (state) => {
+  switch (state) {
+    case 'granted':
+      return 'granted';
+    case 'denied':
+      return 'denied';
+    default:
+      return 'default';
+  }
+};
+
+class NotificationShim {
+  static get permission() {
+    return toBrowserPermission(window.WebPortals.queryPermissionSync('notifications'));
+  }
+
+  static async requestPermission(cb) {
+    const permission = toBrowserPermission(
+      await window.WebPortals.requestPermission('notifications')
+    );
+
+    if (typeof cb === 'function') {
+      cb(permission);
+    }
+
+    return permission;
+  }
+
+  constructor(title, options) {
+    if (NotificationShim.permission !== 'granted') {
+      throw new TypeError('Notification permission has not been granted.');
+    }
+
+    const notification = new originalNotification(title, options);
+    notification.addEventListener('click', () => {
+      window.WebPortals.notificationClick(window._serviceId);
+    });
+    return notification;
+  }
+}
+
+Object.setPrototypeOf(NotificationShim, originalNotification);
+Object.setPrototypeOf(NotificationShim.prototype, originalNotification.prototype);
+window.Notification = NotificationShim;
 })();`
 
 const displayMediaPatchCode = `
@@ -487,6 +517,35 @@ const displayMediaPatchCode = `
     };
 
     console.log('WebPortals: Screen capture API patched successfully');
+  })();
+`
+
+const fileSystemPermissionPatchCode = `
+  (function() {
+    // This must run in the page world so site code sees the patched
+    // FileSystemHandle methods. Patching them in the preload world is not enough.
+    const FileSystemHandleCtor = window.FileSystemHandle;
+    if (!FileSystemHandleCtor || !FileSystemHandleCtor.prototype) {
+      return;
+    }
+
+    if (window.__webPortalsFsPermissionPatchApplied) {
+      return;
+    }
+
+    const normalizeMode = (options) => {
+      return options && options.mode === 'readwrite' ? 'writable' : 'readable';
+    };
+
+    FileSystemHandleCtor.prototype.queryPermission = function(options) {
+      return window.WebPortals.queryFileSystemPermission(normalizeMode(options));
+    };
+
+    FileSystemHandleCtor.prototype.requestPermission = function(options) {
+      return window.WebPortals.requestFileSystemPermission(normalizeMode(options));
+    };
+
+    window.__webPortalsFsPermissionPatchApplied = true;
   })();
 `
 
@@ -573,6 +632,7 @@ const vWebview: ObjectDirective<ServiceWebview, string> = {
         window.prompt = window.WebPortals.prompt;
         ${notificationsClassDefinition}
         ${displayMediaPatchCode}
+        ${fileSystemPermissionPatchCode}
         ;0 // without this, we get the below error in the console:
         // Error occurred in handler for 'GUEST_VIEW_MANAGER_CALL': Error: An object could not be cloned.
         // at IpcRendererInternal.send (node:electron/js2c/sandbox_bundle:2:121801)

@@ -2,6 +2,15 @@ import { BrowserWindow, ipcMain, desktopCapturer, screen, type Rectangle } from 
 import prompt from 'custom-electron-prompt'
 import { DownloadManager } from './downloads'
 import { createEmbeddedDevToolsManager } from './embeddedDevTools'
+import {
+  type ManagedPermission,
+  type FileSystemAccessMode,
+  listServicePermissions,
+  parseOrigin,
+  queryPermissionForSession,
+  requestPermissionForSession,
+  updateServicePermission
+} from './permissions'
 
 export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadManager) {
   const embeddedDevTools = createEmbeddedDevToolsManager(mainWindow)
@@ -46,6 +55,70 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
   ipcMain.handle('setDevToolsVisible', async (_event, serviceId: string, visible: boolean) => {
     embeddedDevTools.setVisible(serviceId, visible)
   })
+
+  ipcMain.handle(
+    'permissions-list',
+    async (_event, target: { partitionId: string; url: string }) => {
+      return listServicePermissions(target)
+    }
+  )
+
+  ipcMain.handle(
+    'permissions-update',
+    async (
+      _event,
+      input: {
+        partitionId: string
+        url: string
+        permission: ManagedPermission
+        mode?: FileSystemAccessMode
+        decision: 'ask' | 'allow' | 'block'
+      }
+    ) => {
+      return updateServicePermission(input)
+    }
+  )
+
+  ipcMain.on(
+    'permission-query-sync',
+    (
+      event,
+      input: {
+        permission: ManagedPermission
+        mode?: FileSystemAccessMode
+      }
+    ) => {
+      const requestUrl = event.senderFrame?.url || event.sender.getURL()
+      const origin = parseOrigin(requestUrl)
+      event.returnValue = queryPermissionForSession(
+        event.sender.session,
+        origin,
+        input.permission,
+        input.mode
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'permission-request',
+    async (
+      event,
+      input: {
+        permission: ManagedPermission
+        mode?: FileSystemAccessMode
+      }
+    ) => {
+      const requestUrl = event.senderFrame?.url || event.sender.getURL()
+      const origin = parseOrigin(requestUrl)
+      return requestPermissionForSession(
+        mainWindow,
+        event.sender.session,
+        origin,
+        input.permission,
+        input.mode
+      )
+    }
+  )
 
   mainWindow.webContents.on('devtools-opened', () => {
     embeddedDevTools.hideWhenMainDevToolsOpen()

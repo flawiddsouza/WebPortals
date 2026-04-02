@@ -103,6 +103,7 @@
             </td>
             <td>
               <button type="button" @click="startEditService(service)">Edit</button>
+              <button type="button" @click="emit('managePermissions', service)">Permissions</button>
               <button type="button" @click="handleDeleteService(service)">Delete</button>
             </td>
           </template>
@@ -161,6 +162,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:services': [Service[]]
   'update:showPartitionManager': [boolean]
+  managePermissions: [Service]
 }>()
 
 const addService = ref<Partial<Service>>({

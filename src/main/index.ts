@@ -11,6 +11,7 @@ import windowStateKeeper from './utils/window-state'
 import AutoLaunch from './utils/auto-launch'
 import { initIpc } from './ipc'
 import { DownloadManager } from './downloads'
+import { configurePermissions, loadPermissionStore } from './permissions'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
@@ -163,6 +164,14 @@ function createWindow(): BrowserWindow {
   mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
 
   mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
+    const partition =
+      typeof webPreferences.partition === 'string'
+        ? webPreferences.partition
+        : typeof params.partition === 'string'
+          ? params.partition
+          : undefined
+
+    configurePermissions(mainWindow, partition)
     webPreferences.preload = join(__dirname, '..', 'preload', 'webview.js')
     // Disable webview's built-in download UI to avoid double dialogs
     delete (params as any).downloadPath
@@ -261,6 +270,8 @@ if (!is.dev) {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  loadPermissionStore()
+
   // Set app user model id for windows
   electronApp.setAppUserModelId(appUserModelId)
 
