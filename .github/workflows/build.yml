@@ -51,4 +51,17 @@ jobs:
             dist/*.AppImage
             dist/*.dmg
             dist/*.zip
-          generate_release_notes: true
+          generate_release_notes: false
+
+  release-notes:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Generate release notes
+        run: |
+          NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes -f tag_name=${{ github.ref_name }} --jq '.body')
+          gh release edit "${{ github.ref_name }}" --notes "$NOTES"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
