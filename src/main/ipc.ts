@@ -205,7 +205,7 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
   })
 
   ipcMain.handle('download-cancel', (_event, downloadId: string) => {
-    downloadManager.cancelDownload(downloadId)
+    return downloadManager.cancelDownload(downloadId)
   })
 
   ipcMain.handle('download-open', (_event, savePath: string) => {
@@ -222,5 +222,9 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
 
   ipcMain.handle('download-resume', (_event, downloadId: string) => {
     return downloadManager.resumeDownload(downloadId)
+  })
+
+  ipcMain.handle('download-retry', (_event, downloadId: string) => {
+    return downloadManager.retryDownload(downloadId)
   })
 }

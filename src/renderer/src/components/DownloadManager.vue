@@ -1,7 +1,10 @@
 <template>
   <div v-if="downloads.length > 0" class="download-manager">
     <div class="download-header" @click="expanded = !expanded">
-      <span>{{ downloads.length }} Download{{ downloads.length > 1 ? 's' : '' }}</span>
+      <div class="download-header-info">
+        <span>{{ downloads.length }} Download{{ downloads.length > 1 ? 's' : '' }}</span>
+        <span v-if="!expanded" class="header-summary">{{ collapsedSummary }}</span>
+      </div>
       <span class="toggle">{{ expanded ? '▼' : '▲' }}</span>
     </div>
 
@@ -22,7 +25,13 @@
         </div>
 
         <div class="download-actions">
-          <template v-if="download.state === 'progressing' || download.state === 'paused'">
+          <template
+            v-if="
+              download.state === 'progressing' ||
+              download.state === 'paused' ||
+              download.state === 'interrupted'
+            "
+          >
             <button
               v-if="download.state === 'progressing'"
               @click="pauseDownload(download.id)"
@@ -39,12 +48,25 @@
               ▶ Resume
             </button>
 
+            <button
+              v-if="download.state === 'interrupted'"
+              @click="retryDownload(download.id)"
+              title="Retry download"
+            >
+              ↻ Retry
+            </button>
+
             <button @click="cancelDownload(download.id)" title="Cancel download">✕ Cancel</button>
           </template>
 
           <template v-else-if="download.state === 'completed'">
             <button @click="openDownload(download)" title="Open file">Open</button>
             <button @click="showInFolder(download)" title="Show in folder">Show in Folder</button>
+            <button @click="removeDownload(download.id)" title="Clear">✕</button>
+          </template>
+
+          <template v-else>
+            <span class="status-label">{{ statusLabel(download.state) }}</span>
             <button @click="removeDownload(download.id)" title="Clear">✕</button>
           </template>
         </div>
@@ -54,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 
 interface Download {
   id: string
@@ -63,10 +85,24 @@ interface Download {
   receivedBytes: number
   state: 'progressing' | 'paused' | 'completed' | 'cancelled' | 'interrupted'
   savePath: string
+  canResume: boolean
 }
 
 const downloads = ref<Download[]>([])
 const expanded = ref(true)
+
+const collapsedSummary = computed(() => {
+  const prioritized =
+    downloads.value.find((download) =>
+      ['progressing', 'paused', 'interrupted'].includes(download.state)
+    ) ?? downloads.value[downloads.value.length - 1]
+
+  if (!prioritized) return ''
+
+  const detail = downloadSummary(prioritized)
+  const extraCount = downloads.value.length - 1
+  return extraCount > 0 ? `${detail} +${extraCount} more` : detail
+})
 
 function progress(download: Download): number {
   if (download.totalBytes === 0) return 0
@@ -81,16 +117,39 @@ function formatBytes(bytes: number): string {
   return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
+function downloadSummary(download: Download): string {
+  if (download.state === 'progressing') {
+    const percentage = download.totalBytes > 0 ? `${Math.round(progress(download))}%` : 'Starting'
+    return `${download.filename} ${percentage}`
+  }
+
+  if (download.state === 'paused') return `${download.filename} Paused`
+  if (download.state === 'interrupted') return `${download.filename} Interrupted`
+  if (download.state === 'completed') return `${download.filename} Completed`
+  if (download.state === 'cancelled') return `${download.filename} Cancelled`
+
+  return download.filename
+}
+
 async function cancelDownload(id: string) {
-  await window.electron.ipcRenderer.invoke('download-cancel', id)
-  downloads.value = downloads.value.filter((d) => d.id !== id)
+  const ok = await window.electron.ipcRenderer.invoke('download-cancel', id)
+  if (ok) {
+    const d = downloads.value.find((x) => x.id === id)
+    if (d) {
+      d.state = 'cancelled'
+      d.canResume = false
+    }
+  }
 }
 
 async function pauseDownload(id: string) {
   const ok = await window.electron.ipcRenderer.invoke('download-pause', id)
   if (ok) {
     const d = downloads.value.find((x) => x.id === id)
-    if (d) d.state = 'paused'
+    if (d) {
+      d.state = 'paused'
+      d.canResume = true
+    }
   }
 }
 
@@ -98,7 +157,23 @@ async function resumeDownload(id: string) {
   const ok = await window.electron.ipcRenderer.invoke('download-resume', id)
   if (ok) {
     const d = downloads.value.find((x) => x.id === id)
-    if (d) d.state = 'progressing'
+    if (d) {
+      d.state = 'progressing'
+      d.canResume = false
+    }
+  }
+}
+
+async function retryDownload(id: string) {
+  const ok = await window.electron.ipcRenderer.invoke('download-retry', id)
+  if (ok) {
+    const d = downloads.value.find((x) => x.id === id)
+    if (d) {
+      d.state = 'progressing'
+      d.receivedBytes = 0
+      d.totalBytes = 0
+      d.canResume = false
+    }
   }
 }
 
@@ -114,25 +189,47 @@ function removeDownload(id: string) {
   downloads.value = downloads.value.filter((d) => d.id !== id)
 }
 
+function applyDownloadUpdate(download: Download, data: Partial<Download>) {
+  if (typeof data.filename === 'string') download.filename = data.filename
+  if (typeof data.savePath === 'string') download.savePath = data.savePath
+  if (typeof data.receivedBytes === 'number') download.receivedBytes = data.receivedBytes
+  if (typeof data.totalBytes === 'number') download.totalBytes = data.totalBytes
+  if (typeof data.state === 'string') download.state = data.state
+  if (typeof data.canResume === 'boolean') download.canResume = data.canResume
+}
+
+function statusLabel(state: Download['state']): string {
+  if (state === 'cancelled') return 'Cancelled'
+  return state
+}
+
 onMounted(() => {
   window.electron.ipcRenderer.on('download-started', (_event, data) => {
+    const existing = downloads.value.find((d) => d.id === data.id)
+    if (existing) {
+      applyDownloadUpdate(existing, data)
+      return
+    }
+
     downloads.value.push(data)
   })
 
   window.electron.ipcRenderer.on('download-progress', (_event, data) => {
     const download = downloads.value.find((d) => d.id === data.id)
     if (download) {
-      download.receivedBytes = data.receivedBytes
-      download.totalBytes = data.totalBytes
-      download.state = data.state
+      applyDownloadUpdate(download, data)
     }
   })
 
   window.electron.ipcRenderer.on('download-done', (_event, data) => {
     const download = downloads.value.find((d) => d.id === data.id)
     if (download) {
-      download.state = data.state
+      applyDownloadUpdate(download, data)
       // Remove failed/cancelled downloads automatically, but keep completed ones
+      if (data.state === 'cancelled' || data.state === 'interrupted') {
+        return
+      }
+
       if (data.state !== 'completed') {
         downloads.value = downloads.value.filter((d) => d.id !== data.id)
       }
@@ -167,6 +264,20 @@ onBeforeUnmount(() => {
   align-items: center;
   user-select: none;
   font-size: 0.9rem;
+}
+
+.download-header-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.header-summary {
+  color: #aaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .download-header:hover {
@@ -228,6 +339,7 @@ onBeforeUnmount(() => {
 .download-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .download-actions button {
@@ -243,5 +355,10 @@ onBeforeUnmount(() => {
 
 .download-actions button:hover {
   background-color: #444;
+}
+
+.status-label {
+  font-size: 0.8rem;
+  color: #aaa;
 }
 </style>

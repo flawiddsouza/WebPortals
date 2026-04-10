@@ -1,4 +1,4 @@
-import { app, dialog, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow } from 'electron'
 import { join, basename } from 'path'
 import { randomUUID } from 'crypto'
 
@@ -9,13 +9,24 @@ interface Download {
   receivedBytes: number
   state: 'progressing' | 'paused' | 'completed' | 'cancelled' | 'interrupted'
   savePath: string
+  url: string
+  canResume: boolean
+  session: Electron.Session
   item?: Electron.DownloadItem
+}
+
+interface PendingRetry {
+  downloadId: string
+  savePath: string
+  session: Electron.Session
+  url: string
 }
 
 export class DownloadManager {
   private downloads = new Map<string, Download>()
   private mainWindow: BrowserWindow
   private registeredSessions = new Set<Electron.Session>()
+  private pendingRetries: PendingRetry[] = []
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow
@@ -27,27 +38,21 @@ export class DownloadManager {
     this.registeredSessions.add(session)
 
     session.on('will-download', (_event, item) => {
-      const downloadId = randomUUID()
+      const pendingRetry = this.consumePendingRetry(session, item.getURL())
+      const downloadId = pendingRetry?.downloadId ?? randomUUID()
       const defaultPath = join(app.getPath('downloads'), item.getFilename())
-
-      // Using the sync dialog keeps the handler alive so the default dialog never appears
-      const filePath = dialog.showSaveDialogSync(this.mainWindow, {
-        defaultPath,
-        buttonLabel: 'Save'
-      })
-
-      if (!filePath) {
-        item.cancel()
-        return
-      }
+      const filePath = pendingRetry?.savePath
 
       const download: Download = {
         id: downloadId,
-        filename: basename(filePath),
+        filename: item.getFilename(),
         totalBytes: item.getTotalBytes(),
         receivedBytes: item.getReceivedBytes(),
         state: item.isPaused() ? 'paused' : 'progressing',
-        savePath: filePath,
+        savePath: filePath ?? '',
+        url: item.getURL(),
+        canResume: item.canResume(),
+        session,
         item
       }
 
@@ -58,9 +63,8 @@ export class DownloadManager {
         const d = this.findDownloadByItem(item)
         if (!d) return
 
-        d.receivedBytes = item.getReceivedBytes()
-        d.totalBytes = item.getTotalBytes()
-        d.state = item.isPaused() ? 'paused' : (state as any)
+        this.syncDownloadFromItem(d, item)
+        d.state = this.resolveDownloadState(item, state)
         this.notifyRenderer('download-progress', d)
       })
 
@@ -68,11 +72,22 @@ export class DownloadManager {
         const d = this.findDownloadByItem(item)
         if (!d) return
 
-        d.state = state as any
+        this.syncDownloadFromItem(d, item)
+        d.state = state as Download['state']
         this.notifyRenderer('download-done', d)
+        if (state !== 'interrupted') {
+          this.downloads.delete(d.id)
+        }
       })
 
-      item.setSavePath(filePath)
+      if (filePath) {
+        item.setSavePath(filePath)
+      } else {
+        item.setSaveDialogOptions({
+          defaultPath,
+          buttonLabel: 'Save'
+        })
+      }
 
       this.notifyRenderer('download-started', download)
     })
@@ -85,6 +100,40 @@ export class DownloadManager {
     return undefined
   }
 
+  private consumePendingRetry(session: Electron.Session, url: string): PendingRetry | undefined {
+    const retryIndex = this.pendingRetries.findIndex(
+      (retry) => retry.session === session && retry.url === url
+    )
+    if (retryIndex === -1) return undefined
+
+    const [retry] = this.pendingRetries.splice(retryIndex, 1)
+    return retry
+  }
+
+  private syncDownloadFromItem(download: Download, item: Electron.DownloadItem) {
+    download.receivedBytes = item.getReceivedBytes()
+    download.totalBytes = item.getTotalBytes()
+    download.canResume = item.canResume()
+
+    const savePath = item.getSavePath()
+    if (savePath) {
+      download.savePath = savePath
+      download.filename = basename(savePath)
+      return
+    }
+
+    download.filename = item.getFilename()
+  }
+
+  private resolveDownloadState(
+    item: Electron.DownloadItem,
+    state: 'progressing' | 'interrupted'
+  ): Download['state'] {
+    if (state === 'interrupted') return 'interrupted'
+    if (item.isPaused()) return 'paused'
+    return state as Download['state']
+  }
+
   private notifyRenderer(event: string, download: Download) {
     this.mainWindow.webContents.send(event, {
       id: download.id,
@@ -92,15 +141,17 @@ export class DownloadManager {
       totalBytes: download.totalBytes,
       receivedBytes: download.receivedBytes,
       state: download.state,
-      savePath: download.savePath
+      savePath: download.savePath,
+      canResume: download.canResume
     })
   }
 
   pauseDownload(downloadId: string): boolean {
     const d = this.downloads.get(downloadId)
-    if (d?.item && !d.item.isPaused() && d.item.canResume()) {
+    if (d?.item && d.item.getState() === 'progressing' && !d.item.isPaused()) {
       d.item.pause()
       d.state = 'paused'
+      d.canResume = d.item.canResume()
       this.notifyRenderer('download-progress', d)
       return true
     }
@@ -109,21 +160,62 @@ export class DownloadManager {
 
   resumeDownload(downloadId: string): boolean {
     const d = this.downloads.get(downloadId)
-    if (d?.item && d.item.isPaused() && d.item.canResume()) {
+    if (
+      d?.item &&
+      (d.item.isPaused() || d.item.getState() === 'interrupted') &&
+      d.item.canResume()
+    ) {
       d.item.resume()
       d.state = 'progressing'
+      d.canResume = d.item.canResume()
       this.notifyRenderer('download-progress', d)
       return true
     }
     return false
   }
 
-  cancelDownload(downloadId: string) {
+  retryDownload(downloadId: string): boolean {
     const d = this.downloads.get(downloadId)
-    if (d?.item) {
-      d.item.cancel()
+    if (!d || d.state !== 'interrupted') return false
+
+    if (d.item?.canResume()) {
+      d.item.resume()
+      d.state = 'progressing'
+      d.canResume = d.item.canResume()
+      this.notifyRenderer('download-progress', d)
+      return true
     }
+
+    this.pendingRetries.push({
+      downloadId: d.id,
+      savePath: d.savePath,
+      session: d.session,
+      url: d.url
+    })
+
+    d.state = 'progressing'
+    d.receivedBytes = 0
+    d.totalBytes = 0
+    d.canResume = false
+    this.notifyRenderer('download-progress', d)
+    d.session.downloadURL(d.url)
+    return true
+  }
+
+  cancelDownload(downloadId: string): boolean {
+    const d = this.downloads.get(downloadId)
+    if (!d) return false
+
+    if (d.item && !['cancelled', 'completed'].includes(d.item.getState())) {
+      d.state = 'cancelled'
+      d.canResume = false
+      d.item.cancel()
+      return true
+    }
+
     this.downloads.delete(downloadId)
+    this.notifyRenderer('download-done', d)
+    return true
   }
 
   openDownload(savePath: string) {
