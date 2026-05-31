@@ -24,13 +24,8 @@ interface PendingRetry {
 
 export class DownloadManager {
   private downloads = new Map<string, Download>()
-  private mainWindow: BrowserWindow
   private registeredSessions = new Set<Electron.Session>()
   private pendingRetries: PendingRetry[] = []
-
-  constructor(mainWindow: BrowserWindow) {
-    this.mainWindow = mainWindow
-  }
 
   setupDownloadHandler(webContents: Electron.WebContents) {
     const session = webContents.session
@@ -135,7 +130,7 @@ export class DownloadManager {
   }
 
   private notifyRenderer(event: string, download: Download) {
-    this.mainWindow.webContents.send(event, {
+    const payload = {
       id: download.id,
       filename: download.filename,
       totalBytes: download.totalBytes,
@@ -143,6 +138,11 @@ export class DownloadManager {
       state: download.state,
       savePath: download.savePath,
       canResume: download.canResume
+    }
+
+    BrowserWindow.getAllWindows().forEach((window) => {
+      if (window.webContents.isDestroyed()) return
+      window.webContents.send(event, payload)
     })
   }
 

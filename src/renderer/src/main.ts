@@ -1,7 +1,13 @@
-import '@imengyu/vue3-context-menu/lib/vue3-context-menu.css'
 import './assets/main.css'
 
 import { createApp } from 'vue'
 import App from './App.vue'
+import OverlayApp from './OverlayApp.vue'
 
-createApp(App).mount('#app')
+const isOverlay = new URLSearchParams(window.location.search).get('overlay') === '1'
+
+if (isOverlay) {
+  document.documentElement.dataset.appOverlay = 'true'
+}
+
+createApp(isOverlay ? OverlayApp : App).mount('#app')

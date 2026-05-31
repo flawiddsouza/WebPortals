@@ -1,7 +1,17 @@
-import { BrowserWindow, ipcMain, desktopCapturer, screen, type Rectangle } from 'electron'
+import {
+  BrowserWindow,
+  Menu,
+  ipcMain,
+  desktopCapturer,
+  screen,
+  type MenuItemConstructorOptions,
+  type Rectangle
+} from 'electron'
 import prompt from 'custom-electron-prompt'
 import { DownloadManager } from './downloads'
 import { createEmbeddedDevToolsManager } from './embeddedDevTools'
+import type { ServicePageManager } from './servicePageManager'
+import type { ManagedServicePage, ServicePageBounds } from './servicePageTypes'
 import {
   type ManagedPermission,
   type FileSystemAccessMode,
@@ -12,8 +22,124 @@ import {
   updateServicePermission
 } from './permissions'
 
-export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadManager) {
-  const embeddedDevTools = createEmbeddedDevToolsManager(mainWindow)
+type ServiceContextMenuCommand =
+  | 'reload'
+  | 'reload-partition'
+  | 'toggle-popout'
+  | 'inspect'
+  | 'find'
+  | 'permissions'
+  | 'toggle-enabled'
+  | 'toggle-hidden'
+
+type AppOverlayPane = 'services' | 'permissions' | 'find' | 'screen-picker'
+
+export function initIpc(
+  mainWindow: BrowserWindow,
+  downloadManager: DownloadManager,
+  servicePages: ServicePageManager,
+  overlayWindow: BrowserWindow
+) {
+  const embeddedDevTools = createEmbeddedDevToolsManager(mainWindow, servicePages)
+  let overlayReadyPromise: Promise<void> | null = null
+  let overlayInteractive: boolean | null = null
+
+  function waitForOverlayReady() {
+    if (!overlayWindow.webContents.isLoading()) {
+      return Promise.resolve()
+    }
+
+    overlayReadyPromise ??= new Promise<void>((resolve) => {
+      overlayWindow.webContents.once('did-finish-load', () => {
+        overlayReadyPromise = null
+        resolve()
+      })
+    })
+
+    return overlayReadyPromise
+  }
+
+  function setOverlayMouseEvents(interactive: boolean) {
+    if (overlayWindow.isDestroyed()) {
+      return
+    }
+
+    if (overlayInteractive === interactive) {
+      return
+    }
+
+    overlayInteractive = interactive
+    if (interactive) {
+      overlayWindow.setIgnoreMouseEvents(false)
+    } else {
+      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+    }
+  }
+
+  function rectCoversWindow(rect: Rectangle, bounds: Rectangle) {
+    return rect.x <= 0 && rect.y <= 0 && rect.width >= bounds.width && rect.height >= bounds.height
+  }
+
+  function setOverlayShape(rects: Rectangle[]) {
+    if (overlayWindow.isDestroyed()) {
+      return
+    }
+
+    const bounds = overlayWindow.getBounds()
+
+    if (rects.length === 0) {
+      if (process.platform === 'win32' || process.platform === 'linux') {
+        overlayWindow.setShape([{ x: 0, y: 0, width: bounds.width, height: bounds.height }])
+      }
+      setOverlayMouseEvents(false)
+      return
+    }
+
+    if (process.platform === 'darwin') {
+      setOverlayMouseEvents(rects.some((rect) => rectCoversWindow(rect, bounds)))
+      return
+    }
+
+    setOverlayMouseEvents(true)
+    if (process.platform === 'win32' || process.platform === 'linux') {
+      overlayWindow.setShape(rects)
+    }
+  }
+
+  async function openOverlay(request: {
+    pane: AppOverlayPane
+    service?: ManagedServicePage
+    serviceId?: string
+    targetUrl?: string
+  }) {
+    await waitForOverlayReady()
+    if (overlayWindow.isDestroyed()) {
+      return
+    }
+
+    const bounds = mainWindow.getContentBounds()
+    overlayWindow.setBounds({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+    if (!overlayWindow.isVisible()) {
+      overlayWindow.showInactive()
+    }
+    setOverlayShape([{ x: 0, y: 0, width: bounds.width, height: bounds.height }])
+    overlayWindow.focus()
+    overlayWindow.webContents.send('app-overlay-open', request)
+  }
+
+  overlayWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.key !== 'Escape' || overlayWindow.isDestroyed()) {
+      return
+    }
+
+    event.preventDefault()
+    overlayWindow.webContents.send('app-overlay-escape')
+  })
 
   ipcMain.on('prompt', async (event, label, defaultValue) => {
     const result = await prompt({
@@ -37,12 +163,9 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
     }
   })
 
-  ipcMain.handle(
-    'openDevTools',
-    async (_event, serviceId: string, webContentsId: number, bounds: Rectangle) => {
-      embeddedDevTools.open(serviceId, webContentsId, bounds)
-    }
-  )
+  ipcMain.handle('openDevTools', async (_event, serviceId: string, bounds: Rectangle) => {
+    embeddedDevTools.open(serviceId, bounds)
+  })
 
   ipcMain.handle('closeDevTools', async (_event, serviceId: string) => {
     embeddedDevTools.close(serviceId)
@@ -134,6 +257,62 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
     return embeddedDevTools.isMainDevToolsOpen()
   })
 
+  ipcMain.handle(
+    'app-overlay-open',
+    async (
+      _event,
+      request: {
+        pane: AppOverlayPane
+        service?: ManagedServicePage
+        serviceId?: string
+        targetUrl?: string
+      }
+    ) => {
+      await openOverlay(request)
+    }
+  )
+
+  ipcMain.handle('app-overlay-close', async () => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.focus()
+    }
+  })
+
+  ipcMain.handle('app-overlay-set-shape', async (_event, rects: Rectangle[]) => {
+    setOverlayShape(rects)
+  })
+
+  ipcMain.handle('app-overlay-set-mouse-events', async (_event, interactive: boolean) => {
+    if (process.platform !== 'darwin') {
+      return
+    }
+
+    setOverlayMouseEvents(interactive)
+  })
+
+  ipcMain.handle('app-overlay-focus', async () => {
+    if (overlayWindow.isDestroyed()) {
+      return
+    }
+
+    if (!overlayWindow.isVisible()) {
+      overlayWindow.showInactive()
+    }
+    overlayWindow.focus()
+  })
+
+  ipcMain.on('app-overlay-data-changed', () => {
+    if (!mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('app-overlay-data-changed')
+    }
+  })
+
+  ipcMain.on('app-overlay-active-service-changed', (_event, serviceId: string | null) => {
+    if (!overlayWindow.isDestroyed() && !overlayWindow.webContents.isDestroyed()) {
+      overlayWindow.webContents.send('app-overlay-active-service-changed', serviceId)
+    }
+  })
+
   ipcMain.handle('get-screens', async () => {
     const displays = screen.getAllDisplays()
     try {
@@ -185,8 +364,7 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
     console.log('Received request-screen-picker for service:', serviceId)
     return new Promise((resolve, reject) => {
       try {
-        // Send event to renderer to show screen picker
-        mainWindow.webContents.send('request-screen-sharing', serviceId)
+        void openOverlay({ pane: 'screen-picker', serviceId }).catch(reject)
 
         // Set up a one-time handler for the response
         ipcMain.handleOnce('screen-picker-response', (_event, result) => {
@@ -226,5 +404,128 @@ export function initIpc(mainWindow: BrowserWindow, downloadManager: DownloadMana
 
   ipcMain.handle('download-retry', (_event, downloadId: string) => {
     return downloadManager.retryDownload(downloadId)
+  })
+
+  ipcMain.handle(
+    'service-context-menu',
+    (
+      event,
+      input: {
+        x: number
+        y: number
+        enabled: boolean
+        hidden: boolean
+        poppedOut: boolean
+      }
+    ) => {
+      return new Promise<ServiceContextMenuCommand | null>((resolve) => {
+        let selectedCommand: ServiceContextMenuCommand | null = null
+        const setSelectedCommand = (command: ServiceContextMenuCommand) => {
+          selectedCommand = command
+        }
+
+        const template: MenuItemConstructorOptions[] = [
+          {
+            label: 'Reload',
+            enabled: input.enabled,
+            click: () => setSelectedCommand('reload')
+          },
+          {
+            label: 'Reload Partition',
+            enabled: input.enabled,
+            click: () => setSelectedCommand('reload-partition')
+          },
+          {
+            label: input.poppedOut ? 'Bring Back Here' : 'Pop Out',
+            enabled: input.enabled,
+            click: () => setSelectedCommand('toggle-popout')
+          },
+          {
+            label: 'Inspect',
+            enabled: input.enabled,
+            click: () => setSelectedCommand('inspect')
+          },
+          {
+            label: 'Find in Page',
+            enabled: input.enabled,
+            click: () => setSelectedCommand('find')
+          },
+          {
+            label: 'Permissions',
+            click: () => setSelectedCommand('permissions')
+          },
+          {
+            label: input.enabled ? 'Disable' : 'Enable',
+            click: () => setSelectedCommand('toggle-enabled')
+          },
+          {
+            label: input.hidden ? 'Unhide' : 'Hide',
+            click: () => setSelectedCommand('toggle-hidden')
+          }
+        ]
+
+        const sourceWindow = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+        Menu.buildFromTemplate(template).popup({
+          window: sourceWindow,
+          x: Math.round(input.x),
+          y: Math.round(input.y),
+          callback: () => resolve(selectedCommand)
+        })
+      })
+    }
+  )
+
+  ipcMain.handle('service-pages-sync', (_event, services: ManagedServicePage[]) => {
+    servicePages.syncServices(services)
+  })
+
+  ipcMain.handle('service-page-activate', (_event, serviceId: string) => {
+    return servicePages.activate(serviceId)
+  })
+
+  ipcMain.handle('service-page-set-bounds', (_event, bounds: ServicePageBounds) => {
+    servicePages.setHostBounds(bounds)
+  })
+
+  ipcMain.handle('service-page-pop-out', (_event, serviceId: string) => {
+    return servicePages.popOut(serviceId)
+  })
+
+  ipcMain.handle('service-page-focus-popout', (_event, serviceId: string) => {
+    return servicePages.focusPopout(serviceId)
+  })
+
+  ipcMain.handle('service-page-bring-back', (_event, serviceId: string) => {
+    return servicePages.bringBack(serviceId)
+  })
+
+  ipcMain.handle('service-page-reload', (_event, serviceId: string) => {
+    return servicePages.reload(serviceId)
+  })
+
+  ipcMain.handle('service-page-get-state', (_event, serviceId: string) => {
+    return servicePages.getState(serviceId)
+  })
+
+  ipcMain.handle(
+    'service-page-find-start',
+    (
+      _event,
+      serviceId: string,
+      text: string,
+      options?: { forward?: boolean; findNext?: boolean }
+    ) => {
+      const contents = servicePages.getWebContents(serviceId)
+      if (!contents || !text) {
+        return
+      }
+
+      return contents.findInPage(text, options)
+    }
+  )
+
+  ipcMain.handle('service-page-find-stop', (_event, serviceId: string) => {
+    const contents = servicePages.getWebContents(serviceId)
+    contents?.stopFindInPage('clearSelection')
   })
 }

@@ -34,16 +34,36 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 const props = defineProps<{
   visible: boolean
   webviewId: string | null
+  activateSearchOnShow?: boolean
+  focusOnShow?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:visible': [boolean]
 }>()
 
+type FindResultState = {
+  numberOfMatches: number
+  activeMatchOrdinal: number | null
+}
+
+type FindOptions = {
+  forward?: boolean
+  findNext?: boolean
+}
+
+const preserveOnHide = ref(false)
+const preservedFindServiceIds = ref(new Set<string>())
+const restoringPreservedFind = ref(false)
 const searchTextMap = ref(new Map<string, string>())
+const findResultMap = ref(new Map<string, FindResultState>())
+const latestFindSequences = ref(new Map<string, number>())
+const latestFindRequestIds = ref(new Map<string, number>())
+const pendingFindResultMap = ref(new Map<string, Map<number, FindResultState>>())
 const numberOfMatches = ref(0)
 const activeMatchOrdinal = ref<number | null>(null)
 const findInput = ref<HTMLInputElement | null>(null)
+let nextFindSequence = 0
 
 // Computed property to get/set the current search text based on webviewId
 const currentSearchText = computed({
@@ -57,24 +77,43 @@ const currentSearchText = computed({
   }
 })
 
+function focusFindInput() {
+  findInput.value?.focus()
+  setTimeout(() => {
+    findInput.value?.focus()
+  }, 50)
+}
+
+defineExpose({
+  focus: focusFindInput
+})
+
 // Immediately focus input when component becomes visible
 watch(
   () => props.visible,
   async (newValue) => {
     if (newValue) {
+      preserveOnHide.value = false
+      restoreFindState()
       await nextTick()
-      // Try multiple times to ensure focus works even if there's a delay
-      findInput.value?.focus()
-      // Sometimes focus doesn't work on the first try, especially when switching context
-      setTimeout(() => {
-        findInput.value?.focus()
-      }, 50)
+      if (props.focusOnShow !== false) {
+        focusFindInput()
+      }
 
-      if (currentSearchText.value) {
+      if (
+        currentSearchText.value &&
+        props.activateSearchOnShow !== false &&
+        !restoringPreservedFind.value
+      ) {
         startFind()
       }
+      restoringPreservedFind.value = false
     } else {
-      stopFind()
+      if (preserveOnHide.value || !props.webviewId) {
+        preserveOnHide.value = false
+      } else {
+        stopFind()
+      }
     }
   },
   { immediate: true }
@@ -83,67 +122,137 @@ watch(
 watch(
   () => props.webviewId,
   (newId, oldId) => {
+    if (oldId && !newId) {
+      preserveOnHide.value = true
+      preservedFindServiceIds.value.add(oldId)
+    } else if (newId) {
+      preserveOnHide.value = false
+      restoringPreservedFind.value = preservedFindServiceIds.value.delete(newId)
+    }
+
+    restoreFindState(newId)
+
     if (newId && props.visible) {
-      // If webview changed, reset and restart find with the search text for this webview
-      stopFind(oldId)
       nextTick(() => {
-        findInput.value?.focus()
-        if (currentSearchText.value) {
+        if (props.focusOnShow !== false) {
+          focusFindInput()
+        }
+        if (
+          currentSearchText.value &&
+          props.activateSearchOnShow !== false &&
+          !restoringPreservedFind.value
+        ) {
           startFind()
         }
+        restoringPreservedFind.value = false
       })
     }
   }
 )
 
-function getActiveWebview() {
-  if (!props.webviewId) return null
-  return document.querySelector(
-    `.webview[data-service-id="${props.webviewId}"]`
-  ) as Electron.WebviewTag | null
-}
-
 function startFind() {
-  const webview = getActiveWebview()
-  if (!webview || !currentSearchText.value) {
-    resetFindState()
+  if (!props.webviewId || !currentSearchText.value) {
+    resetFindState(props.webviewId)
     return
   }
 
-  webview.findInPage(currentSearchText.value)
+  findInPage(props.webviewId, currentSearchText.value, { forward: true, findNext: true })
 }
 
 function findNext() {
-  const webview = getActiveWebview()
-  if (!webview || !currentSearchText.value) return
+  if (!props.webviewId || !currentSearchText.value) return
 
-  webview.findInPage(currentSearchText.value, { forward: true, findNext: true })
+  findInPage(props.webviewId, currentSearchText.value, { forward: true, findNext: false })
 }
 
 function findPrevious() {
-  const webview = getActiveWebview()
-  if (!webview || !currentSearchText.value) return
+  if (!props.webviewId || !currentSearchText.value) return
 
-  webview.findInPage(currentSearchText.value, { forward: false, findNext: true })
+  findInPage(props.webviewId, currentSearchText.value, { forward: false, findNext: false })
+}
+
+function findInPage(webviewId: string, text: string, options?: FindOptions) {
+  const sequence = ++nextFindSequence
+  latestFindSequences.value.set(webviewId, sequence)
+  latestFindRequestIds.value.delete(webviewId)
+
+  void window.electron.ipcRenderer
+    .invoke('service-page-find-start', webviewId, text, options)
+    .then((requestId) => {
+      if (typeof requestId !== 'number') {
+        return
+      }
+
+      if (latestFindSequences.value.get(webviewId) !== sequence) {
+        return
+      }
+
+      latestFindRequestIds.value.set(webviewId, requestId)
+      applyPendingFindResult(webviewId, requestId)
+    })
 }
 
 function stopFind(webviewId?: string | null) {
   const id = webviewId || props.webviewId
   if (!id) return
 
-  const webview = document.querySelector(
-    `.webview[data-service-id="${id}"]`
-  ) as Electron.WebviewTag | null
-
-  if (!webview) return
-
-  webview.stopFindInPage('clearSelection')
-  resetFindState()
+  void window.electron.ipcRenderer.invoke('service-page-find-stop', id)
+  resetFindState(id)
 }
 
-function resetFindState() {
-  numberOfMatches.value = 0
-  activeMatchOrdinal.value = null
+function applyPendingFindResult(webviewId: string, requestId: number) {
+  const pendingResults = pendingFindResultMap.value.get(webviewId)
+  const state = pendingResults?.get(requestId)
+  if (!pendingResults || !state) {
+    return
+  }
+
+  saveFindState(webviewId, state)
+  pendingResults.delete(requestId)
+  if (pendingResults.size === 0) {
+    pendingFindResultMap.value.delete(webviewId)
+  }
+}
+
+function savePendingFindResult(webviewId: string, requestId: number, state: FindResultState) {
+  let pendingResults = pendingFindResultMap.value.get(webviewId)
+  if (!pendingResults) {
+    pendingResults = new Map<number, FindResultState>()
+    pendingFindResultMap.value.set(webviewId, pendingResults)
+  }
+
+  pendingResults.set(requestId, state)
+}
+
+function applyFindState(state: FindResultState) {
+  numberOfMatches.value = state.numberOfMatches
+  activeMatchOrdinal.value = state.activeMatchOrdinal
+}
+
+function restoreFindState(webviewId = props.webviewId) {
+  const state = webviewId ? findResultMap.value.get(webviewId) : null
+  applyFindState(state ?? { numberOfMatches: 0, activeMatchOrdinal: null })
+}
+
+function resetFindState(webviewId?: string | null) {
+  const id = webviewId || props.webviewId
+  if (id) {
+    findResultMap.value.delete(id)
+    latestFindSequences.value.delete(id)
+    latestFindRequestIds.value.delete(id)
+    pendingFindResultMap.value.delete(id)
+  }
+
+  if (!id || id === props.webviewId) {
+    applyFindState({ numberOfMatches: 0, activeMatchOrdinal: null })
+  }
+}
+
+function saveFindState(webviewId: string, state: FindResultState) {
+  findResultMap.value.set(webviewId, state)
+  if (webviewId === props.webviewId) {
+    applyFindState(state)
+  }
 }
 
 function closeFindBar() {
@@ -151,39 +260,51 @@ function closeFindBar() {
   emit('update:visible', false)
 }
 
-function handleFoundInPage(event: Electron.FoundInPageEvent) {
+function handleFoundInPage(payload: {
+  serviceId: string
+  result: {
+    requestId: number
+    finalUpdate: boolean
+    matches: number
+    activeMatchOrdinal: number
+  }
+}) {
   // Update UI with result counts
-  if (event.result.finalUpdate) {
-    numberOfMatches.value = event.result.matches
-    if (event.result.matches > 0) {
-      activeMatchOrdinal.value = event.result.activeMatchOrdinal
-    } else {
-      activeMatchOrdinal.value = null
+  if (payload.result.finalUpdate) {
+    const state = {
+      numberOfMatches: payload.result.matches,
+      activeMatchOrdinal: payload.result.matches > 0 ? payload.result.activeMatchOrdinal : null
     }
+
+    const latestRequestId = latestFindRequestIds.value.get(payload.serviceId)
+    if (latestRequestId === undefined && latestFindSequences.value.has(payload.serviceId)) {
+      savePendingFindResult(payload.serviceId, payload.result.requestId, state)
+      return
+    }
+
+    if (latestRequestId === undefined || payload.result.requestId !== latestRequestId) {
+      return
+    }
+
+    saveFindState(payload.serviceId, state)
   }
 }
 
-// Listen for found-in-page events
-function setupWebviewListeners() {
-  const webview = getActiveWebview()
-  if (!webview) return
-
-  webview.addEventListener('found-in-page', handleFoundInPage)
-}
-
-function cleanupWebviewListeners() {
-  const webview = getActiveWebview()
-  if (!webview) return
-
-  webview.removeEventListener('found-in-page', handleFoundInPage)
-}
+let removeFoundInPageListener: (() => void) | null = null
 
 // Set up and clean up webview event listeners
 onMounted(() => {
-  setupWebviewListeners()
+  removeFoundInPageListener = window.electron.ipcRenderer.on(
+    'service-page-found-in-page',
+    (_event, payload) => {
+      handleFoundInPage(payload)
+    }
+  )
   if (props.visible) {
     nextTick(() => {
-      findInput.value?.focus()
+      if (props.focusOnShow !== false) {
+        focusFindInput()
+      }
     })
   }
 })
@@ -193,17 +314,8 @@ onBeforeUnmount(() => {
   for (const id of searchTextMap.value.keys()) {
     stopFind(id)
   }
-  cleanupWebviewListeners()
+  removeFoundInPageListener?.()
 })
-
-// Watch for webview changes and update listeners
-watch(
-  () => props.webviewId,
-  () => {
-    cleanupWebviewListeners()
-    setupWebviewListeners()
-  }
-)
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Enter') {

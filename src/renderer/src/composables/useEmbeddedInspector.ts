@@ -1,6 +1,5 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Ref } from 'vue'
 import type { Service } from '../db'
-import { getServiceWebview } from '../webview'
 
 interface RectangleBounds {
   x: number
@@ -12,7 +11,7 @@ interface RectangleBounds {
 interface UseEmbeddedInspectorOptions {
   services: Ref<Service[]>
   activeService: Ref<Service | null>
-  setActiveService: (service: Service) => void
+  setActiveService: (service: Service) => void | Promise<void>
 }
 
 const minInspectorHeight = 180
@@ -26,7 +25,6 @@ export function useEmbeddedInspector({
 }: UseEmbeddedInspectorOptions) {
   const inspectorHeights = reactive(new Map<string, number>())
   const inspectedServiceIds = reactive(new Set<string>())
-  const readyServices = reactive(new Set<string>())
   const inspectorContentRef = ref<HTMLElement | null>(null)
   const isInspectorResizing = ref(false)
   const inspectorResizeHotzone = ref(false)
@@ -72,22 +70,16 @@ export function useEmbeddedInspector({
   }
 
   async function syncInspector(serviceId = activeInspectedServiceId.value) {
-    if (!effectiveInspectorVisible.value || !serviceId || !readyServices.has(serviceId)) {
+    if (!effectiveInspectorVisible.value || !serviceId) {
       return
     }
 
-    const targetWebview = getServiceWebview(serviceId)
     const bounds = getInspectorBounds()
-    if (!targetWebview || !bounds) {
+    if (!bounds) {
       return
     }
 
-    await window.electron.ipcRenderer.invoke(
-      'openDevTools',
-      serviceId,
-      targetWebview.getWebContentsId(),
-      bounds
-    )
+    await window.electron.ipcRenderer.invoke('openDevTools', serviceId, bounds)
   }
 
   async function openInspector(service: Service) {
@@ -100,7 +92,7 @@ export function useEmbeddedInspector({
       inspectorHeights.set(service.id, defaultInspectorHeight)
     }
 
-    setActiveService(service)
+    await setActiveService(service)
     await nextTick()
     await syncInspector(service.id)
   }
@@ -110,8 +102,21 @@ export function useEmbeddedInspector({
       return
     }
 
-    inspectedServiceIds.delete(serviceId)
-    await window.electron.ipcRenderer.invoke('closeDevTools', serviceId)
+    try {
+      await window.electron.ipcRenderer.invoke('closeDevTools', serviceId)
+      inspectedServiceIds.delete(serviceId)
+    } catch (error) {
+      const serviceStillExists = services.value.some(
+        (service) => service.id === serviceId && service.enabled && !service.hidden
+      )
+
+      if (serviceStillExists) {
+        console.warn(`Failed to close embedded inspector for service ${serviceId}`, error)
+        return
+      }
+
+      inspectedServiceIds.delete(serviceId)
+    }
   }
 
   function closeActiveInspector() {
@@ -229,14 +234,6 @@ export function useEmbeddedInspector({
     await handleWindowResize()
   }
 
-  function markServiceReady(serviceId: string) {
-    readyServices.add(serviceId)
-
-    if (activeService.value?.id === serviceId && inspectedServiceIds.has(serviceId)) {
-      void syncInspector(serviceId)
-    }
-  }
-
   onMounted(() => {
     window.addEventListener('resize', handleWindowResize)
     removeMainDevToolsVisibilityListener = window.electron.ipcRenderer.on(
@@ -328,7 +325,6 @@ export function useEmbeddedInspector({
     inspectorResizeHotzone,
     inspectorServiceTitle,
     isInspectorResizing,
-    markServiceReady,
     openInspector,
     startInspectorResizeFromNav,
     syncInspectorBounds: handleWindowResize,

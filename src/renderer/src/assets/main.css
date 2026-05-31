@@ -4,6 +4,12 @@ body {
   user-select: none;
 }
 
+html[data-app-overlay='true'],
+html[data-app-overlay='true'] body,
+html[data-app-overlay='true'] #app {
+  background: transparent;
+}
+
 code {
   font-weight: 600;
   padding: 3px 5px;

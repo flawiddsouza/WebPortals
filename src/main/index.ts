@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, screen, nativeImage } from 'electron'
+import { app, BrowserWindow, Tray, Menu, screen, nativeImage, type NativeImage } from 'electron'
 import { basename, dirname, join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -6,12 +6,12 @@ import iconDev from '../../resources/icon-dev.png?asset'
 import createMenu from './menu'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import contextMenu from 'electron-context-menu'
 import windowStateKeeper from './utils/window-state'
 import AutoLaunch from './utils/auto-launch'
 import { initIpc } from './ipc'
 import { DownloadManager } from './downloads'
-import { configurePermissions, loadPermissionStore } from './permissions'
+import { loadPermissionStore } from './permissions'
+import { createServicePageManager } from './servicePageManager'
 
 const isWindows = process.platform === 'win32'
 const isMac = process.platform === 'darwin'
@@ -41,6 +41,18 @@ const appUserModelId = is.dev ? 'com.flawiddsouza.WebPortals.Dev' : 'com.flawidd
 const appIcon = is.dev ? iconDev : icon
 
 let tray: Tray
+
+function loadRenderer(window: BrowserWindow, query?: Record<string, string>) {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    for (const [key, value] of Object.entries(query ?? {})) {
+      url.searchParams.set(key, value)
+    }
+    window.loadURL(url.toString())
+  } else {
+    window.loadFile(join(__dirname, '../renderer/index.html'), query ? { query } : undefined)
+  }
+}
 
 function toggleWindow(mainWindow: BrowserWindow) {
   if (mainWindow.isMinimized()) {
@@ -86,7 +98,7 @@ function getTrayMenuTemplate(mainWindow: BrowserWindow) {
 }
 
 function createTray(mainWindow: BrowserWindow) {
-  let trayIcon: any = appIcon
+  let trayIcon: string | NativeImage = appIcon
 
   if (isMac) {
     // On macOS, create a template image (monochrome)
@@ -125,6 +137,93 @@ function windowOpenHandler(details: Electron.HandlerDetails) {
   return { action: 'deny' } as const
 }
 
+function syncOverlayWindowBounds(mainWindow: BrowserWindow, overlayWindow: BrowserWindow) {
+  if (mainWindow.isDestroyed() || overlayWindow.isDestroyed()) {
+    return
+  }
+
+  const bounds = mainWindow.getContentBounds()
+  overlayWindow.setBounds({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height
+  })
+
+  if (!overlayWindow.webContents.isDestroyed()) {
+    overlayWindow.webContents.send('app-overlay-window-bounds-changed')
+  }
+}
+
+function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
+  const contentBounds = mainWindow.getContentBounds()
+  const overlayWindow = new BrowserWindow({
+    x: contentBounds.x,
+    y: contentBounds.y,
+    width: contentBounds.width,
+    height: contentBounds.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    parent: mainWindow,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    hasShadow: false,
+    icon: appIcon,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  overlayWindow.setMenu(null)
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+  loadRenderer(overlayWindow, { overlay: '1' })
+
+  const syncBounds = () => syncOverlayWindowBounds(mainWindow, overlayWindow)
+  mainWindow.on('move', syncBounds)
+  mainWindow.on('moved', syncBounds)
+  mainWindow.on('resize', syncBounds)
+  mainWindow.on('resized', syncBounds)
+  mainWindow.on('restore', syncBounds)
+  mainWindow.on('maximize', syncBounds)
+  mainWindow.on('unmaximize', syncBounds)
+  mainWindow.on('show', () => {
+    syncBounds()
+    overlayWindow.showInactive()
+  })
+  mainWindow.on('hide', () => overlayWindow.hide())
+  mainWindow.on('minimize', () => overlayWindow.hide())
+  mainWindow.on('closed', () => {
+    if (!overlayWindow.isDestroyed()) {
+      overlayWindow.destroy()
+    }
+  })
+
+  overlayWindow.on('close', (event) => {
+    if (mainWindow.isDestroyed()) {
+      return
+    }
+
+    event.preventDefault()
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+  })
+
+  overlayWindow.webContents.once('did-finish-load', () => {
+    syncBounds()
+    if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+      overlayWindow.showInactive()
+      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+    }
+  })
+
+  return overlayWindow
+}
+
 function createWindow(): BrowserWindow {
   const workAreaSize = screen.getPrimaryDisplay().workAreaSize
   const winStateOptions = {
@@ -145,8 +244,7 @@ function createWindow(): BrowserWindow {
     icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      webviewTag: true
+      sandbox: false
     }
   })
 
@@ -162,23 +260,6 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.webContents.setWindowOpenHandler(windowOpenHandler)
-
-  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
-    const partition =
-      typeof webPreferences.partition === 'string'
-        ? webPreferences.partition
-        : typeof params.partition === 'string'
-          ? params.partition
-          : undefined
-
-    configurePermissions(mainWindow, partition)
-    webPreferences.preload = join(__dirname, '..', 'preload', 'webview.js')
-    // Match Chrome's OS-specific font defaults
-    if (isWindows) {
-      // Electron defaults to Courier New on Windows; Chrome uses Consolas
-      webPreferences.defaultFontFamily = { monospace: 'Consolas' }
-    }
-  })
 
   mainWindow.on('show', () => {
     if (!isMac) {
@@ -213,11 +294,7 @@ function createWindow(): BrowserWindow {
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  loadRenderer(mainWindow)
 
   app.on('second-instance', () => {
     console.log('Second instance was opened, showing the existing window and focusing it')
@@ -288,20 +365,14 @@ app.whenReady().then(() => {
   })
 
   const mainWindow = createWindow()
-  const downloadManager = new DownloadManager(mainWindow)
-  initIpc(mainWindow, downloadManager)
-
-  app.on('web-contents-created', (_event, contents) => {
-    if (contents.getType() === 'webview') {
-      contents.setWindowOpenHandler(windowOpenHandler)
-      downloadManager.setupDownloadHandler(contents)
-      // add a right-click context menu to the app, includes options to copy, paste, select all, copy image etc.
-      contextMenu({
-        window: contents,
-        showInspectElement: false
-      })
-    }
+  const overlayWindow = createOverlayWindow(mainWindow)
+  const downloadManager = new DownloadManager()
+  const servicePageManager = createServicePageManager(mainWindow, downloadManager, {
+    appIcon,
+    isWindows,
+    windowOpenHandler
   })
+  initIpc(mainWindow, downloadManager, servicePageManager, overlayWindow)
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -310,6 +381,8 @@ app.whenReady().then(() => {
   })
 
   app.on('before-quit', function () {
+    servicePageManager.setQuitting(true)
+    servicePageManager.destroyAll()
     BrowserWindow.getAllWindows().forEach((win) => {
       win.removeAllListeners('close')
       win.close()
