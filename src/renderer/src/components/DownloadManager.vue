@@ -91,6 +91,14 @@ interface Download {
 const downloads = ref<Download[]>([])
 const expanded = ref(true)
 
+const emit = defineEmits<{
+  changed: []
+}>()
+
+function notifyChanged() {
+  emit('changed')
+}
+
 const collapsedSummary = computed(() => {
   const prioritized =
     downloads.value.find((download) =>
@@ -138,6 +146,7 @@ async function cancelDownload(id: string) {
     if (d) {
       d.state = 'cancelled'
       d.canResume = false
+      notifyChanged()
     }
   }
 }
@@ -149,6 +158,7 @@ async function pauseDownload(id: string) {
     if (d) {
       d.state = 'paused'
       d.canResume = true
+      notifyChanged()
     }
   }
 }
@@ -160,6 +170,7 @@ async function resumeDownload(id: string) {
     if (d) {
       d.state = 'progressing'
       d.canResume = false
+      notifyChanged()
     }
   }
 }
@@ -173,6 +184,7 @@ async function retryDownload(id: string) {
       d.receivedBytes = 0
       d.totalBytes = 0
       d.canResume = false
+      notifyChanged()
     }
   }
 }
@@ -187,6 +199,7 @@ async function showInFolder(download: Download) {
 
 function removeDownload(id: string) {
   downloads.value = downloads.value.filter((d) => d.id !== id)
+  notifyChanged()
 }
 
 function applyDownloadUpdate(download: Download, data: Partial<Download>) {
@@ -208,16 +221,19 @@ onMounted(() => {
     const existing = downloads.value.find((d) => d.id === data.id)
     if (existing) {
       applyDownloadUpdate(existing, data)
+      notifyChanged()
       return
     }
 
     downloads.value.push(data)
+    notifyChanged()
   })
 
   window.electron.ipcRenderer.on('download-progress', (_event, data) => {
     const download = downloads.value.find((d) => d.id === data.id)
     if (download) {
       applyDownloadUpdate(download, data)
+      notifyChanged()
     }
   })
 
@@ -227,12 +243,14 @@ onMounted(() => {
       applyDownloadUpdate(download, data)
       // Remove failed/cancelled downloads automatically, but keep completed ones
       if (data.state === 'cancelled' || data.state === 'interrupted') {
+        notifyChanged()
         return
       }
 
       if (data.state !== 'completed') {
         downloads.value = downloads.value.filter((d) => d.id !== data.id)
       }
+      notifyChanged()
     }
   })
 })

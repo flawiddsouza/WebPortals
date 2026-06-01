@@ -29,7 +29,9 @@ if (isMac && argv['start-minimized']) {
   app.dock?.hide()
 }
 
-if (is.dev) {
+if (process.env['WEBPORTALS_USER_DATA_DIR']) {
+  app.setPath('userData', process.env['WEBPORTALS_USER_DATA_DIR'])
+} else if (is.dev) {
   const defaultUserData = app.getPath('userData')
   const devUserData = join(dirname(defaultUserData), `${basename(defaultUserData)}-dev`)
   app.setPath('userData', devUserData)
@@ -155,18 +157,25 @@ function syncOverlayWindowBounds(mainWindow: BrowserWindow, overlayWindow: Brows
   }
 }
 
+function parkOverlayWindow(overlayWindow: BrowserWindow) {
+  overlayWindow.setParentWindow(null)
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+  overlayWindow.setBounds({ x: -10000, y: -10000, width: 1, height: 1 })
+  if (!overlayWindow.isVisible()) {
+    overlayWindow.showInactive()
+  }
+}
+
 function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
-  const contentBounds = mainWindow.getContentBounds()
   const overlayWindow = new BrowserWindow({
-    x: contentBounds.x,
-    y: contentBounds.y,
-    width: contentBounds.width,
-    height: contentBounds.height,
+    x: -10000,
+    y: -10000,
+    width: 1,
+    height: 1,
     show: false,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
-    parent: mainWindow,
     skipTaskbar: true,
     resizable: false,
     movable: false,
@@ -184,7 +193,11 @@ function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
   overlayWindow.setIgnoreMouseEvents(true, { forward: true })
   loadRenderer(overlayWindow, { overlay: '1' })
 
-  const syncBounds = () => syncOverlayWindowBounds(mainWindow, overlayWindow)
+  const syncBounds = () => {
+    if (overlayWindow.getParentWindow()) {
+      syncOverlayWindowBounds(mainWindow, overlayWindow)
+    }
+  }
   mainWindow.on('move', syncBounds)
   mainWindow.on('moved', syncBounds)
   mainWindow.on('resize', syncBounds)
@@ -194,10 +207,13 @@ function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
   mainWindow.on('unmaximize', syncBounds)
   mainWindow.on('show', () => {
     syncBounds()
-    overlayWindow.showInactive()
   })
-  mainWindow.on('hide', () => overlayWindow.hide())
-  mainWindow.on('minimize', () => overlayWindow.hide())
+  mainWindow.on('hide', () => {
+    parkOverlayWindow(overlayWindow)
+  })
+  mainWindow.on('minimize', () => {
+    parkOverlayWindow(overlayWindow)
+  })
   mainWindow.on('closed', () => {
     if (!overlayWindow.isDestroyed()) {
       overlayWindow.destroy()
@@ -214,11 +230,7 @@ function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
   })
 
   overlayWindow.webContents.once('did-finish-load', () => {
-    syncBounds()
-    if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
-      overlayWindow.showInactive()
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-    }
+    parkOverlayWindow(overlayWindow)
   })
 
   return overlayWindow
@@ -350,7 +362,8 @@ app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId(appUserModelId)
 
-  const isSingleInstance = app.requestSingleInstanceLock()
+  const isSingleInstance =
+    Boolean(process.env['WEBPORTALS_USER_DATA_DIR']) || app.requestSingleInstanceLock()
 
   if (!isSingleInstance) {
     app.quit()

@@ -43,6 +43,8 @@ export function initIpc(
   const embeddedDevTools = createEmbeddedDevToolsManager(mainWindow, servicePages)
   let overlayReadyPromise: Promise<void> | null = null
   let overlayInteractive: boolean | null = null
+  let overlayShapeRects: Rectangle[] = []
+  let overlayBounds = overlayWindow.getBounds()
 
   function waitForOverlayReady() {
     if (!overlayWindow.webContents.isLoading()) {
@@ -59,9 +61,17 @@ export function initIpc(
     return overlayReadyPromise
   }
 
+  function supportsNativeOverlayShape() {
+    return process.platform === 'win32' || process.platform === 'linux'
+  }
+
   function setOverlayMouseEvents(interactive: boolean) {
     if (overlayWindow.isDestroyed()) {
       return
+    }
+
+    if (!interactive && supportsNativeOverlayShape() && overlayShapeRects.length > 0) {
+      interactive = true
     }
 
     if (overlayInteractive === interactive) {
@@ -80,30 +90,116 @@ export function initIpc(
     return rect.x <= 0 && rect.y <= 0 && rect.width >= bounds.width && rect.height >= bounds.height
   }
 
+  function sameOverlayShape(left: Rectangle[], right: Rectangle[]) {
+    if (left.length !== right.length) {
+      return false
+    }
+
+    return left.every((leftRect, index) => {
+      const rightRect = right[index]
+      return (
+        leftRect.x === rightRect.x &&
+        leftRect.y === rightRect.y &&
+        leftRect.width === rightRect.width &&
+        leftRect.height === rightRect.height
+      )
+    })
+  }
+
+  function applyNativeOverlayShape() {
+    if (supportsNativeOverlayShape()) {
+      overlayWindow.setShape(overlayShapeRects)
+    }
+  }
+
+  function showOverlayInactive() {
+    if (!overlayWindow.isVisible() && mainWindow.isVisible()) {
+      overlayWindow.showInactive()
+    }
+  }
+
+  function attachOverlayToMainWindow() {
+    if (overlayWindow.getParentWindow() !== mainWindow) {
+      overlayWindow.setParentWindow(mainWindow)
+    }
+
+    const bounds = mainWindow.getContentBounds()
+    overlayBounds = bounds
+    overlayWindow.setBounds({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+  }
+
+  function detachOverlayFromMainWindow() {
+    if (overlayWindow.getParentWindow()) {
+      overlayWindow.setParentWindow(null)
+    }
+
+    overlayWindow.setBounds({ x: -10000, y: -10000, width: 1, height: 1 })
+    overlayBounds = overlayWindow.getBounds()
+    if (!overlayWindow.isVisible()) {
+      overlayWindow.showInactive()
+    }
+  }
+
   function setOverlayShape(rects: Rectangle[]) {
     if (overlayWindow.isDestroyed()) {
       return
     }
 
-    const bounds = overlayWindow.getBounds()
+    const shapeChanged = !sameOverlayShape(overlayShapeRects, rects)
+    if (!shapeChanged && overlayWindow.isVisible() && overlayWindow.getParentWindow() === mainWindow) {
+      return
+    }
+
+    overlayShapeRects = rects
 
     if (rects.length === 0) {
-      if (process.platform === 'win32' || process.platform === 'linux') {
-        overlayWindow.setShape([{ x: 0, y: 0, width: bounds.width, height: bounds.height }])
-      }
       setOverlayMouseEvents(false)
+      detachOverlayFromMainWindow()
       return
     }
 
-    if (process.platform === 'darwin') {
-      setOverlayMouseEvents(rects.some((rect) => rectCoversWindow(rect, bounds)))
+    attachOverlayToMainWindow()
+    const bounds = overlayWindow.getBounds()
+    const coversWindow = rects.some((rect) => rectCoversWindow(rect, bounds))
+
+    applyNativeOverlayShape()
+    setOverlayMouseEvents(coversWindow || supportsNativeOverlayShape())
+    showOverlayInactive()
+  }
+
+  function syncFullOverlayShapeToWindowBounds() {
+    if (overlayWindow.isDestroyed()) {
       return
     }
 
+    const previousBounds = overlayBounds
+    const nextBounds = overlayWindow.getBounds()
+    overlayBounds = nextBounds
+
+    if (overlayShapeRects.length === 0) {
+      return
+    }
+
+    const hadFullWindowShape = overlayShapeRects.some((rect) =>
+      rectCoversWindow(rect, previousBounds)
+    )
+
+    if (!hadFullWindowShape) {
+      return
+    }
+
+    overlayShapeRects = overlayShapeRects.map((rect) =>
+      rectCoversWindow(rect, previousBounds)
+        ? { x: 0, y: 0, width: nextBounds.width, height: nextBounds.height }
+        : rect
+    )
+    applyNativeOverlayShape()
     setOverlayMouseEvents(true)
-    if (process.platform === 'win32' || process.platform === 'linux') {
-      overlayWindow.setShape(rects)
-    }
   }
 
   async function openOverlay(request: {
@@ -124,11 +220,6 @@ export function initIpc(
       width: bounds.width,
       height: bounds.height
     })
-    if (!overlayWindow.isVisible()) {
-      overlayWindow.showInactive()
-    }
-    setOverlayShape([{ x: 0, y: 0, width: bounds.width, height: bounds.height }])
-    overlayWindow.focus()
     overlayWindow.webContents.send('app-overlay-open', request)
   }
 
@@ -140,6 +231,9 @@ export function initIpc(
     event.preventDefault()
     overlayWindow.webContents.send('app-overlay-escape')
   })
+
+  overlayWindow.on('resize', syncFullOverlayShapeToWindowBounds)
+  overlayWindow.on('resized', syncFullOverlayShapeToWindowBounds)
 
   ipcMain.on('prompt', async (event, label, defaultValue) => {
     const result = await prompt({
@@ -273,6 +367,10 @@ export function initIpc(
   )
 
   ipcMain.handle('app-overlay-close', async () => {
+    if (overlayShapeRects.length === 0) {
+      setOverlayShape([])
+    }
+
     if (!mainWindow.isDestroyed()) {
       mainWindow.focus()
     }
@@ -283,10 +381,6 @@ export function initIpc(
   })
 
   ipcMain.handle('app-overlay-set-mouse-events', async (_event, interactive: boolean) => {
-    if (process.platform !== 'darwin') {
-      return
-    }
-
     setOverlayMouseEvents(interactive)
   })
 

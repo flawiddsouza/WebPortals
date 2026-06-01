@@ -67,6 +67,15 @@ function hasUsableBounds(bounds: Rectangle): boolean {
   return bounds.width > 0 && bounds.height > 0
 }
 
+function sameBounds(left: Rectangle, right: Rectangle): boolean {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  )
+}
+
 function persistPartition(partitionId: string) {
   return `persist:${partitionId}`
 }
@@ -151,7 +160,7 @@ export function createServicePageManager(
     }
   }
 
-  function attachToMainHost(entry: ServicePageEntry) {
+  function attachToMainHost(entry: ServicePageEntry, options: { focus?: boolean } = {}) {
     if (!hasLiveWebContents(entry)) {
       entry.view.setVisible(false)
       return
@@ -171,9 +180,13 @@ export function createServicePageManager(
       entry.attachedToMainHost = true
     }
 
-    entry.view.setBounds(hostBounds)
+    if (!sameBounds(entry.view.getBounds(), hostBounds)) {
+      entry.view.setBounds(hostBounds)
+    }
     entry.view.setVisible(true)
-    entry.view.webContents.focus()
+    if (options.focus) {
+      entry.view.webContents.focus()
+    }
   }
 
   function detachInactiveEmbeddedViews() {
@@ -209,7 +222,7 @@ export function createServicePageManager(
     entry.placement = 'embedded'
 
     if (activeServiceId === entry.service.id) {
-      attachToMainHost(entry)
+      attachToMainHost(entry, { focus: true })
     } else {
       entry.view.setVisible(false)
     }
@@ -522,7 +535,7 @@ export function createServicePageManager(
       if (entry.placement === 'popped-out') {
         focusPopoutWindow(entry)
       } else {
-        attachToMainHost(entry)
+        attachToMainHost(entry, { focus: true })
       }
 
       emitState(entry)
@@ -636,7 +649,7 @@ export function createServicePageManager(
       }
 
       if (activeServiceId === serviceId) {
-        attachToMainHost(entry)
+        attachToMainHost(entry, { focus: true })
       } else {
         entry.view.setVisible(false)
       }

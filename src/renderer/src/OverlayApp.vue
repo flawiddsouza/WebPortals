@@ -68,7 +68,7 @@
     </div>
 
     <div ref="downloadManagerRef" class="overlay-download-host">
-      <DownloadManager />
+      <DownloadManager @changed="refreshShape" />
     </div>
   </div>
 </template>
@@ -249,10 +249,19 @@ function observeSurfaces() {
 async function refreshShape() {
   await nextTick()
   observeSurfaces()
+  reportShape()
   requestAnimationFrame(() => {
     reportShape()
     requestAnimationFrame(reportShape)
   })
+}
+
+function focusFindInput() {
+  void focusAppOverlay()
+    .then(() => nextTick())
+    .then(() => {
+      findInPageRef.value?.focus()
+    })
 }
 
 function restoreFindForActiveService() {
@@ -262,11 +271,7 @@ function restoreFindForActiveService() {
     activeFindServiceId.value = activeServiceId.value
     findVisible.value = true
     if (focusFindOnShow.value) {
-      void focusAppOverlay()
-        .then(() => nextTick())
-        .then(() => {
-          findInPageRef.value?.focus()
-        })
+      focusFindInput()
     }
     return
   }
@@ -306,12 +311,14 @@ async function openOverlay(request: AppOverlayRequest) {
       findVisible.value = serviceId === activeServiceId.value || activeServiceId.value === null
     }
     await refreshShape()
+    focusFindInput()
     return
   }
 
   pane.value = request.pane
   findVisible.value = false
   await refreshShape()
+  await focusAppOverlay()
 }
 
 async function closeModalOverlay() {
