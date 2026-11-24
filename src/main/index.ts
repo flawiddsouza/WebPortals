@@ -157,6 +157,12 @@ function syncOverlayWindowBounds(mainWindow: BrowserWindow, overlayWindow: Brows
   }
 }
 
+// On Windows 'toolbar' adds WS_EX_TOOLWINDOW, which keeps the overlay off the taskbar. skipTaskbar
+// alone does not: a taskbar restarted after an Explorer crash gives every visible unowned window a button.
+function overlayWindowType() {
+  return isWindows ? 'toolbar' : undefined
+}
+
 function parkOverlayWindow(overlayWindow: BrowserWindow) {
   overlayWindow.setParentWindow(null)
   overlayWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -176,6 +182,7 @@ function createOverlayWindow(mainWindow: BrowserWindow): BrowserWindow {
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
+    type: overlayWindowType(),
     skipTaskbar: true,
     resizable: false,
     movable: false,

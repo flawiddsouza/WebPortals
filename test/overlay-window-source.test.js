@@ -30,6 +30,16 @@ test('idle app startup parks the transparent overlay offscreen without parenting
   assert.doesNotMatch(source, /function setInertOverlayShape/)
 })
 
+test('windows overlay is a tool window so a restarted taskbar gives it no button', () => {
+  const indexSource = readFileSync(join(root, 'src/main/index.ts'), 'utf8')
+
+  assert.match(
+    indexSource,
+    /function overlayWindowType\(\) \{[\s\S]*?isWindows \? 'toolbar' : undefined[\s\S]*?\}/
+  )
+  assert.match(indexSource, /type: overlayWindowType\(\)/)
+})
+
 test('closing or emptying the app overlay parks the transparent overlay offscreen', () => {
   const source = readFileSync(join(root, 'src/main/ipc.ts'), 'utf8')
 
